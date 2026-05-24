@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   useMutation,
   useQuery,
@@ -7,6 +7,11 @@ import {
 } from "@tanstack/react-query";
 import { Link, useParams } from "react-router-dom";
 
+import {
+  CardPicker,
+  type CardPickerHandle,
+  type CardPickerSelection,
+} from "@/components/CardPicker";
 import {
   CONDITIONS,
   FINISHES,
@@ -148,9 +153,35 @@ function CollectionHeader({
 // Add-entry form
 // ---------------------------------------------------------------------------
 
+/**
+ * Pick a sensible default finish for the resolved printing. Most cards are
+ * `nonfoil`, but some printings (e.g. foil-only promos) only ship as `foil`,
+ * so we fall back to whatever is available.
+ */
+function defaultFinishFor(available: CardFinish[]): CardFinish {
+  if (available.includes("nonfoil")) return "nonfoil";
+  if (available.length > 0 && available[0]) return available[0];
+  // Empty list shouldn't happen for real printings, but stay safe.
+  return "nonfoil";
+}
+
+// Type guards over the canonical enums — preferred over `as` casts in
+// onChange handlers, per the project's TS guidelines.
+function isCardFinish(value: string): value is CardFinish {
+  return (FINISHES as readonly string[]).includes(value);
+}
+
+function isCardCondition(value: string): value is CardCondition {
+  return (CONDITIONS as readonly string[]).includes(value);
+}
+
 function AddEntrySection({ id }: { id: string }) {
   const queryClient = useQueryClient();
-  const [printingId, setPrintingId] = useState("");
+  const pickerRef = useRef<CardPickerHandle>(null);
+
+  // Resolved printing — null until the user picks one. Quantity / finish /
+  // language / condition follow once we have a selection.
+  const [selection, setSelection] = useState<CardPickerSelection | null>(null);
   const [quantity, setQuantity] = useState(1);
   const [finish, setFinish] = useState<CardFinish>("nonfoil");
   const [language, setLanguage] = useState("en");
@@ -158,40 +189,69 @@ function AddEntrySection({ id }: { id: string }) {
   const [acquiredAt, setAcquiredAt] = useState("");
   const [acquiredFrom, setAcquiredFrom] = useState("");
   const [notes, setNotes] = useState("");
+  const [moreOpen, setMoreOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [lastAdded, setLastAdded] = useState<string | null>(null);
+
+  // Auto-dismiss the "Added: X" confirmation after ~2s.
+  useEffect(() => {
+    if (!lastAdded) return;
+    const t = window.setTimeout(() => setLastAdded(null), 2000);
+    return () => window.clearTimeout(t);
+  }, [lastAdded]);
+
+  const resetToIdle = () => {
+    setSelection(null);
+    setQuantity(1);
+    setFinish("nonfoil");
+    setLanguage("en");
+    setCondition("near_mint");
+    setAcquiredAt("");
+    setAcquiredFrom("");
+    setNotes("");
+    setMoreOpen(false);
+  };
 
   const addMutation = useMutation({
     mutationFn: (body: CreateEntryBody) => collections.createEntry(id, body),
-    onSuccess: async () => {
+    onSuccess: async (created) => {
       setError(null);
-      setPrintingId("");
-      setQuantity(1);
-      setAcquiredAt("");
-      setAcquiredFrom("");
-      setNotes("");
+      setLastAdded(`${created.printing_name} ×${created.quantity}`);
+      resetToIdle();
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: entriesKey(id) }),
         queryClient.invalidateQueries({ queryKey: collectionKey(id) }),
       ]);
+      // Refocus the search box so the user can immediately type the next
+      // card — the core "bulk add" UX promise.
+      pickerRef.current?.focus();
     },
     onError: (err: unknown) => {
       setError(err instanceof Error ? err.message : "Failed to add entry");
     },
   });
 
+  const handlePick = (s: CardPickerSelection) => {
+    setSelection(s);
+    setQuantity(1);
+    setFinish(defaultFinishFor(s.available_finishes));
+    setLanguage("en");
+    setCondition("near_mint");
+    setError(null);
+  };
+
   const onSubmit = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
-    const pid = printingId.trim();
-    if (!pid) {
-      setError("printing_id is required (paste a UUID from /printings).");
+    if (!selection) {
+      setError("Pick a card first.");
       return;
     }
     if (quantity < 1) {
-      setError("quantity must be at least 1.");
+      setError("Quantity must be at least 1.");
       return;
     }
     addMutation.mutate({
-      printing_id: pid,
+      printing_id: selection.printing_id,
       quantity,
       finish,
       language: language.trim() || "en",
@@ -211,136 +271,190 @@ function AddEntrySection({ id }: { id: string }) {
         id="add-entry-heading"
         className="font-mono text-xs uppercase tracking-widest text-fg-subtle"
       >
-        Add entry
+        Add card
       </h2>
-      <form onSubmit={onSubmit} className="mt-4 grid gap-4 md:grid-cols-2">
-        <label className="grid gap-1 md:col-span-2">
-          <span className="font-mono text-xs uppercase tracking-widest text-fg-subtle">
-            Printing ID (UUID)
-          </span>
-          <input
-            type="text"
-            value={printingId}
-            onChange={(e) => setPrintingId(e.target.value)}
-            placeholder="e.g. 8e7c…"
-            required
-            className="rounded border border-border bg-surface px-3 py-2 font-mono text-sm text-fg focus:outline-none focus:ring-2 focus:ring-accent"
-          />
-        </label>
 
-        <label className="grid gap-1">
-          <span className="font-mono text-xs uppercase tracking-widest text-fg-subtle">
-            Quantity
-          </span>
-          <input
-            type="number"
-            min={1}
-            value={quantity}
-            onChange={(e) => setQuantity(Number(e.target.value))}
-            className="rounded border border-border bg-surface px-3 py-2 text-fg focus:outline-none focus:ring-2 focus:ring-accent"
-          />
-        </label>
+      <form onSubmit={onSubmit} className="mt-4 flex flex-col gap-4">
+        <CardPicker ref={pickerRef} onSelect={handlePick} autoFocus />
 
-        <label className="grid gap-1">
-          <span className="font-mono text-xs uppercase tracking-widest text-fg-subtle">
-            Finish
-          </span>
-          <select
-            value={finish}
-            onChange={(e) => setFinish(e.target.value as CardFinish)}
-            className="rounded border border-border bg-surface px-3 py-2 text-fg focus:outline-none focus:ring-2 focus:ring-accent"
+        {selection && (
+          <div className="grid gap-4 md:grid-cols-3">
+            <label className="grid gap-1">
+              <span className="font-mono text-xs uppercase tracking-widest text-fg-subtle">
+                Quantity
+              </span>
+              <input
+                type="number"
+                min={1}
+                value={quantity}
+                onChange={(e) => setQuantity(Number(e.target.value))}
+                className="rounded border border-border bg-surface px-3 py-2 text-fg focus:outline-none focus:ring-2 focus:ring-accent"
+              />
+            </label>
+
+            <label className="grid gap-1">
+              <span className="font-mono text-xs uppercase tracking-widest text-fg-subtle">
+                Finish
+              </span>
+              <select
+                value={finish}
+                onChange={(e) => {
+                  const v = e.target.value;
+                  if (isCardFinish(v)) setFinish(v);
+                }}
+                className="rounded border border-border bg-surface px-3 py-2 text-fg focus:outline-none focus:ring-2 focus:ring-accent"
+              >
+                {FINISHES.map((f) => {
+                  const available =
+                    selection.available_finishes.length === 0 ||
+                    selection.available_finishes.includes(f);
+                  return (
+                    <option key={f} value={f} disabled={!available}>
+                      {f}
+                      {available ? "" : " (not printed)"}
+                    </option>
+                  );
+                })}
+              </select>
+            </label>
+
+            <label className="grid gap-1">
+              <span className="font-mono text-xs uppercase tracking-widest text-fg-subtle">
+                Condition
+              </span>
+              <select
+                value={condition}
+                onChange={(e) => {
+                  const v = e.target.value;
+                  if (isCardCondition(v)) setCondition(v);
+                }}
+                className="rounded border border-border bg-surface px-3 py-2 text-fg focus:outline-none focus:ring-2 focus:ring-accent"
+              >
+                {CONDITIONS.map((c) => (
+                  <option key={c} value={c}>
+                    {c}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
+        )}
+
+        {selection && (
+          <details
+            open={moreOpen}
+            onToggle={(e) => setMoreOpen(e.currentTarget.open)}
+            className="rounded border border-border bg-surface px-3 py-2"
           >
-            {FINISHES.map((f) => (
-              <option key={f} value={f}>
-                {f}
-              </option>
-            ))}
-          </select>
-        </label>
+            <summary className="cursor-pointer select-none font-mono text-xs uppercase tracking-widest text-fg-subtle">
+              More details
+            </summary>
+            <div className="mt-3 grid gap-3 md:grid-cols-2">
+              <label className="grid gap-1">
+                <span className="font-mono text-xs uppercase tracking-widest text-fg-subtle">
+                  Language
+                </span>
+                <input
+                  type="text"
+                  value={language}
+                  onChange={(e) => setLanguage(e.target.value)}
+                  maxLength={8}
+                  className="rounded border border-border bg-surface px-3 py-2 text-fg focus:outline-none focus:ring-2 focus:ring-accent"
+                />
+              </label>
 
-        <label className="grid gap-1">
-          <span className="font-mono text-xs uppercase tracking-widest text-fg-subtle">
-            Language
-          </span>
-          <input
-            type="text"
-            value={language}
-            onChange={(e) => setLanguage(e.target.value)}
-            maxLength={8}
-            className="rounded border border-border bg-surface px-3 py-2 text-fg focus:outline-none focus:ring-2 focus:ring-accent"
-          />
-        </label>
+              <label className="grid gap-1">
+                <span className="font-mono text-xs uppercase tracking-widest text-fg-subtle">
+                  Acquired at
+                </span>
+                <input
+                  type="date"
+                  value={acquiredAt}
+                  onChange={(e) => setAcquiredAt(e.target.value)}
+                  className="rounded border border-border bg-surface px-3 py-2 text-fg focus:outline-none focus:ring-2 focus:ring-accent"
+                />
+              </label>
 
-        <label className="grid gap-1">
-          <span className="font-mono text-xs uppercase tracking-widest text-fg-subtle">
-            Condition
-          </span>
-          <select
-            value={condition}
-            onChange={(e) => setCondition(e.target.value as CardCondition)}
-            className="rounded border border-border bg-surface px-3 py-2 text-fg focus:outline-none focus:ring-2 focus:ring-accent"
+              <label className="grid gap-1">
+                <span className="font-mono text-xs uppercase tracking-widest text-fg-subtle">
+                  Acquired from
+                </span>
+                <input
+                  type="text"
+                  value={acquiredFrom}
+                  onChange={(e) => setAcquiredFrom(e.target.value)}
+                  placeholder="LGS, prerelease, trade…"
+                  className="rounded border border-border bg-surface px-3 py-2 text-fg focus:outline-none focus:ring-2 focus:ring-accent"
+                />
+              </label>
+
+              <label className="grid gap-1">
+                <span className="font-mono text-xs uppercase tracking-widest text-fg-subtle">
+                  Notes
+                </span>
+                <input
+                  type="text"
+                  value={notes}
+                  onChange={(e) => setNotes(e.target.value)}
+                  className="rounded border border-border bg-surface px-3 py-2 text-fg focus:outline-none focus:ring-2 focus:ring-accent"
+                />
+              </label>
+            </div>
+          </details>
+        )}
+
+        {selection && (
+          <p
+            className="font-mono text-xs text-fg-subtle"
+            data-testid="add-entry-preview"
           >
-            {CONDITIONS.map((c) => (
-              <option key={c} value={c}>
-                {c}
-              </option>
-            ))}
-          </select>
-        </label>
-
-        <label className="grid gap-1">
-          <span className="font-mono text-xs uppercase tracking-widest text-fg-subtle">
-            Acquired at
-          </span>
-          <input
-            type="date"
-            value={acquiredAt}
-            onChange={(e) => setAcquiredAt(e.target.value)}
-            className="rounded border border-border bg-surface px-3 py-2 text-fg focus:outline-none focus:ring-2 focus:ring-accent"
-          />
-        </label>
-
-        <label className="grid gap-1">
-          <span className="font-mono text-xs uppercase tracking-widest text-fg-subtle">
-            Acquired from
-          </span>
-          <input
-            type="text"
-            value={acquiredFrom}
-            onChange={(e) => setAcquiredFrom(e.target.value)}
-            placeholder="LGS, prerelease, trade…"
-            className="rounded border border-border bg-surface px-3 py-2 text-fg focus:outline-none focus:ring-2 focus:ring-accent"
-          />
-        </label>
-
-        <label className="grid gap-1 md:col-span-2">
-          <span className="font-mono text-xs uppercase tracking-widest text-fg-subtle">
-            Notes
-          </span>
-          <input
-            type="text"
-            value={notes}
-            onChange={(e) => setNotes(e.target.value)}
-            className="rounded border border-border bg-surface px-3 py-2 text-fg focus:outline-none focus:ring-2 focus:ring-accent"
-          />
-        </label>
+            Adding:{" "}
+            <span className="text-fg">{selection.name}</span> ·{" "}
+            <span className="uppercase tracking-widest">
+              {selection.set_code}
+            </span>{" "}
+            · #{selection.collector_number} · {quantity}× {finish}{" "}
+            {condition.replace("_", " ")}
+          </p>
+        )}
 
         {error && (
-          <p
-            role="alert"
-            className="text-sm text-signal-danger md:col-span-2"
-          >
+          <p role="alert" className="text-sm text-signal-danger">
             {error}
           </p>
         )}
 
-        <button
-          type="submit"
-          disabled={addMutation.isPending}
-          className="self-start rounded bg-accent px-4 py-2 font-mono text-xs uppercase tracking-widest text-accent-fg shadow-sm transition disabled:opacity-50 md:col-span-2"
-        >
-          {addMutation.isPending ? "Adding…" : "Add entry"}
-        </button>
+        {lastAdded && !error && (
+          <p
+            role="status"
+            aria-live="polite"
+            className="font-mono text-xs text-signal-success"
+          >
+            Added: {lastAdded}
+          </p>
+        )}
+
+        <div className="flex items-center gap-3">
+          <button
+            type="submit"
+            disabled={addMutation.isPending || !selection}
+            className="rounded bg-accent px-4 py-2 font-mono text-xs uppercase tracking-widest text-accent-fg shadow-sm transition disabled:opacity-50"
+          >
+            {addMutation.isPending ? "Adding…" : "Add card"}
+          </button>
+          {selection && (
+            <button
+              type="button"
+              onClick={() => {
+                resetToIdle();
+                pickerRef.current?.focus();
+              }}
+              className="rounded border border-border px-3 py-2 font-mono text-xs uppercase tracking-widest text-fg-subtle hover:text-fg"
+            >
+              Clear
+            </button>
+          )}
+        </div>
       </form>
     </section>
   );
