@@ -38,3 +38,6 @@ path = "src/main.rs"
 [[bin]]
 name = "tutor-ingest"
 path = "src/bin/ingest.rs"
+
+[dev-dependencies]
+tower = { workspace = true, features = ["util"] }

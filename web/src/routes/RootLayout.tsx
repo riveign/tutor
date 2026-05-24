@@ -17,6 +17,9 @@ export function RootLayout() {
           <NavLink to="/cards" className={navClass}>
             Browse
           </NavLink>
+          <NavLink to="/collections" className={navClass}>
+            Collections
+          </NavLink>
         </nav>
       </header>
       <Outlet />

@@ -23,7 +23,7 @@ export class ApiError extends Error {
 
 const BASE = import.meta.env.VITE_API_URL ?? "/api";
 
-async function request<T>(path: string, init?: RequestInit): Promise<T> {
+export async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(`${BASE}${path}`, {
     ...init,
     headers: {
@@ -31,6 +31,15 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
       ...init?.headers,
     },
   });
+
+  // 204 No Content (and any empty response) — surface as null so callers that
+  // expect a body can detect "deleted/empty" without a JSON parse error.
+  if (res.status === 204) {
+    if (!res.ok) {
+      throw new ApiError(`Request to ${path} failed (${res.status})`, res.status, null);
+    }
+    return null as T;
+  }
 
   const contentType = res.headers.get("content-type") ?? "";
   const body: unknown = contentType.includes("application/json")

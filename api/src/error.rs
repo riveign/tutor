@@ -11,6 +11,9 @@ pub enum ApiError {
     #[error("not found")]
     NotFound,
 
+    #[error("{0}")]
+    Validation(String),
+
     #[error("database error: {0}")]
     Database(#[from] sqlx::Error),
 
@@ -18,10 +21,18 @@ pub enum ApiError {
     Other(#[from] anyhow::Error),
 }
 
+impl ApiError {
+    /// 400-class user error with a message that is safe to surface verbatim.
+    pub fn validation(msg: impl Into<String>) -> Self {
+        ApiError::Validation(msg.into())
+    }
+}
+
 impl IntoResponse for ApiError {
     fn into_response(self) -> Response {
         let (status, message) = match &self {
             ApiError::NotFound => (StatusCode::NOT_FOUND, self.to_string()),
+            ApiError::Validation(msg) => (StatusCode::BAD_REQUEST, msg.clone()),
             ApiError::Database(e) => {
                 tracing::error!(error = ?e, "database error");
                 (
