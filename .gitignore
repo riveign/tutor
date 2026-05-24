@@ -47,3 +47,6 @@ test-results/
 
 # MUX / scratch session output (orchestrator scratch space)
 tmp/
+
+# Claude Code session output / scratch
+outputs/
