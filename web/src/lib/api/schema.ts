@@ -675,6 +675,12 @@ export interface operations {
                 type_line?: string;
                 /** @description Restrict to cards that have at least one printing in this set. */
                 set_code?: string;
+                /**
+                 * @description Restrict to cards that have a printing with this collector number.
+                 *     Composes with `set_code` to disambiguate (the same `collector_number`
+                 *     is reused across sets). Phase 8d: used by the collector-# add flow.
+                 */
+                collector_number?: string;
                 /** @description Restrict to cards legal in this format (commander, modern, …). */
                 format?: string;
                 /**
@@ -1325,7 +1331,12 @@ export interface operations {
     };
     list_sets: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description Case-insensitive substring match against `code` OR `name`. */
+                q?: string;
+                /** @description Max rows to return; clamped to MAX_LIMIT. Defaults to 50. */
+                limit?: number;
+            };
             header?: never;
             path?: never;
             cookie?: never;

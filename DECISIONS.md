@@ -98,6 +98,21 @@ Rejected alternative: a new `GET /collections/{id}/browse` mirror. That would du
 
 On the FE, `BrowsePage` (the global `/cards` UI) was reduced to a thin wrapper and a new reusable `<CardBrowser />` component owns the form + result table. `CollectionDetail` mounts a two-tab control (`Entries | Browse`) — local React state, not URL-driven, so filter state stays scoped to the tab. The Browse tab has an `Oracle | Printing` radio toggle for grouping. Cache key for the scoped browse is `["collections", id, "browse", { ...filters, grouping, page }]`; the existing add/patch/delete mutations were updated to invalidate by `["collections", id, "browse"]` prefix.
 
+## 2026-05-24 — Phase 8d: collector-# add mode + latest-nonfoil default + inline picker
+
+Three feedback-driven changes to the Phase 8c split-pane add flow:
+
+1. **Latest-nonfoil default printing.** `pickDefaultPrinting` (in `web/src/lib/cardDefaults.ts`) replaces the previous "whatever the server returned first" pick. Rule: order printings by `released_at DESC`, prefer those whose `finishes` include `nonfoil`, fall back to newest-of-any-finish if zero qualify. The PRINTING dropdown still lists every printing — this only changes the auto-selection.
+2. **Inline picker results.** `CardPicker` no longer renders its result list as an absolutely-positioned popover. Results live INLINE in a vertical flex column that fills the parent's slot, so the left half of the split pane is never visually empty. Public API (`onHighlight`, `onSelect`, `autoFocus`, `placeholder`, `ref.focus()`) is unchanged.
+3. **Collector-# add mode.** A new mode toggle (Name · Collector #) lives at the top of the left pane (`AddCardLeftPane`). The collector-# flow is set-picker → number input → Enter to look up. On a unique hit the highlight emits with a `collector_number_filter` field on `CardPickerHighlight` so the preview defaults to that exact printing. On a miss, the input gets a red border + inline error + "Or search by name →" fallback that flips the mode toggle. After a successful add the number clears + refocuses; the SET persists, enabling rip-a-pack flows (`123 ↵ Tab ↵ 124 ↵ Tab ↵ …`).
+
+Backend additions (additive, no breaking changes):
+
+* `GET /sets` gained `q` (substring on `code` OR `name`, ILIKE) and `limit` (clamped 1..500, default 50) so the set-picker autocomplete can avoid paginating the full catalog client-side.
+* `GET /cards/search` gained `collector_number` (composes with `set_code` inside the existing `EXISTS (printings)` subquery; case-insensitive match on `lower(p.collector_number)` so star promos and a/b suffixes match cleanly).
+
+Rejected alternatives: a separate `GET /cards/lookup?set=&cn=` endpoint (would duplicate the filter machinery); separate `GET /sets/search` route (the existing `/sets` already lists everything — adding a query param is the smaller diff). The collector-# mode lives in its own component (`CollectorNumberPicker` + `SetPicker`) instead of bolting branches onto `CardPicker`, because the keyboard/state model is sufficiently different (no global typeahead, two inputs in sequence, success-resets the number but not the set).
+
 ## 2026-05-24 — Four collaborating agents
 
 `tutor-pm`, `tutor-engineer`, `tutor-mtg-expert`, `tutor-brand-design`. Defined in `.claude/agents/`. The orchestrating Claude routes phases; each agent has a tight charter (see their definitions). Plan → approval → implement → verify, at every phase.

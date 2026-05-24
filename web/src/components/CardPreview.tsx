@@ -38,7 +38,7 @@ import {
   type CardFinish,
   type CreateEntryBody,
 } from "@/lib/api/collections";
-import { pickDefaultFinish } from "@/lib/cardDefaults";
+import { pickDefaultFinish, pickDefaultPrinting } from "@/lib/cardDefaults";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -144,15 +144,50 @@ export function CardPreview({
   // Printing selection within the preview
   // -------------------------------------------------------------------------
   //
-  // The set:XXX filter (if any) narrows the printing list. Default to the
-  // most-recently-released printing the user might want (the server already
-  // orders printings by released_at DESC NULLS LAST).
+  // The set:XXX filter (if any) narrows the printing list. Once narrowed,
+  // we pick a "default" via `pickDefaultPrinting` — newest nonfoil printing
+  // first; fallback to newest of any finish. The user can still override via
+  // the PRINTING dropdown.
+  //
+  // The server already returns printings sorted by `released_at DESC NULLS
+  // LAST`, which is the natural browse order for the dropdown.
   const filteredPrintings = useMemo<Printing[]>(() => {
     const all = detailQuery.data?.printings ?? [];
     if (!selection?.set_code_filter) return all;
     const target = selection.set_code_filter.toLowerCase();
     return all.filter((p) => p.set_code.toLowerCase() === target);
   }, [detailQuery.data, selection?.set_code_filter]);
+
+  // The full (filter-aware) printing list the chooser dropdown lists. The
+  // collector-# filter narrows the DEFAULT printing (so the user lands on
+  // exactly the printing they typed) but does NOT hide the other printings
+  // from the dropdown — they remain selectable.
+  const collectorTarget = selection?.collector_number_filter?.toLowerCase();
+
+  // Adapt the API `Printing` shape (`released_at: string | null | undefined`)
+  // to the helper's `string | null` contract. The helper preserves object
+  // identity in its returned reference, so we hand it the same objects and
+  // can use that reference directly.
+  const defaultPrinting = useMemo<Printing | null>(() => {
+    if (filteredPrintings.length === 0) return null;
+    // Collector-# add flow: lock the default to the exact printing the user
+    // typed. Fall through to the latest-nonfoil heuristic if for some reason
+    // the printing isn't in the list (defensive — the lookup that produced
+    // the highlight already proved it exists).
+    if (collectorTarget) {
+      const exact = filteredPrintings.find(
+        (p) => p.collector_number.toLowerCase() === collectorTarget,
+      );
+      if (exact) return exact;
+    }
+    const candidates = filteredPrintings.map((p) => ({
+      ...p,
+      released_at: p.released_at ?? null,
+    }));
+    const picked = pickDefaultPrinting(candidates);
+    if (!picked) return null;
+    return filteredPrintings.find((p) => p.id === picked.id) ?? null;
+  }, [filteredPrintings, collectorTarget]);
 
   const [printingIdOverride, setPrintingIdOverride] = useState<string | null>(
     null,
@@ -162,7 +197,11 @@ export function CardPreview({
   // clear any prior override so we fall back to the default printing.
   useEffect(() => {
     setPrintingIdOverride(null);
-  }, [selection?.oracle_id, selection?.set_code_filter]);
+  }, [
+    selection?.oracle_id,
+    selection?.set_code_filter,
+    selection?.collector_number_filter,
+  ]);
 
   const activePrinting: Printing | null = useMemo(() => {
     if (filteredPrintings.length === 0) return null;
@@ -170,8 +209,8 @@ export function CardPreview({
       const found = filteredPrintings.find((p) => p.id === printingIdOverride);
       if (found) return found;
     }
-    return filteredPrintings[0] ?? null;
-  }, [filteredPrintings, printingIdOverride]);
+    return defaultPrinting;
+  }, [filteredPrintings, printingIdOverride, defaultPrinting]);
 
   const availableFinishes = useMemo(
     () => narrowFinishes(activePrinting?.finishes ?? []),

@@ -147,7 +147,10 @@ export function CardBrowser({
 
   const sets = useQuery({
     queryKey: ["sets.list"],
-    queryFn: api.sets.list,
+    // Phase 8d: `api.sets.list` now accepts an optional `{ q, limit }` arg.
+    // Wrap in an arrow so TanStack Query doesn't pass its QueryFunctionContext
+    // through to it.
+    queryFn: () => api.sets.list(),
     staleTime: 1000 * 60 * 60,
   });
 

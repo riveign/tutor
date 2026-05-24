@@ -54,6 +54,7 @@ fn empty_query() -> SearchQuery {
         color_identity: None,
         type_line: None,
         set_code: None,
+        collector_number: None,
         format: None,
         collection_id: None,
         grouping: None,
@@ -105,6 +106,43 @@ async fn search_filters_by_set_via_printings(pool: PgPool) {
     let mut names: Vec<_> = items.iter().map(|c| c.name.clone()).collect();
     names.sort();
     assert_eq!(names, vec!["Boseiju, Who Endures", "Lightning Bolt"]);
+}
+
+#[sqlx::test(migrations = "./migrations")]
+async fn search_filters_by_set_and_collector_number(pool: PgPool) {
+    // Same collector number can exist in multiple sets; combining set_code +
+    // collector_number must disambiguate to a single printing's oracle. The
+    // fixture has Lightning Bolt at neo/999 and Boseiju at neo/266 — so the
+    // (neo, 999) combo selects exactly Lightning Bolt.
+    seed(&pool).await;
+
+    let q = SearchQuery {
+        set_code: Some("neo".into()),
+        collector_number: Some("999".into()),
+        ..empty_query()
+    };
+    let Json(SearchResponse { items, total, .. }) =
+        search_cards(state(pool), Query(q)).await.unwrap();
+
+    assert_eq!(total, 1);
+    let names: Vec<_> = items.iter().map(|c| c.name.as_str()).collect();
+    assert_eq!(names, vec!["Lightning Bolt"]);
+}
+
+#[sqlx::test(migrations = "./migrations")]
+async fn search_collector_number_alone_spans_sets(pool: PgPool) {
+    // Without a set filter, collector_number alone still narrows to oracles
+    // that have a matching printing in any set.
+    seed(&pool).await;
+
+    let q = SearchQuery {
+        collector_number: Some("161".into()),
+        ..empty_query()
+    };
+    let Json(SearchResponse { items, .. }) = search_cards(state(pool), Query(q)).await.unwrap();
+
+    let names: Vec<_> = items.iter().map(|c| c.name.as_str()).collect();
+    assert_eq!(names, vec!["Lightning Bolt"]);
 }
 
 #[sqlx::test(migrations = "./migrations")]

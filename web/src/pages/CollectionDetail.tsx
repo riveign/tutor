@@ -7,12 +7,12 @@ import {
 } from "@tanstack/react-query";
 import { Link, useParams } from "react-router-dom";
 
-import { CardBrowser } from "@/components/CardBrowser";
 import {
-  CardPicker,
-  type CardPickerHandle,
-  type CardPickerHighlight,
-} from "@/components/CardPicker";
+  AddCardLeftPane,
+  type AddCardLeftPaneHandle,
+} from "@/components/AddCardLeftPane";
+import { CardBrowser } from "@/components/CardBrowser";
+import type { CardPickerHighlight } from "@/components/CardPicker";
 import {
   CardPreview,
   type CardPreviewConfirmPayload,
@@ -342,12 +342,13 @@ function CollectionHeader({
 
 function AddEntrySection({ id }: { id: string }) {
   const queryClient = useQueryClient();
-  const pickerRef = useRef<CardPickerHandle>(null);
+  const leftPaneRef = useRef<AddCardLeftPaneHandle>(null);
 
   // The currently highlighted oracle row in the picker. `null` while the
   // input is empty or no results.
   const [highlight, setHighlight] = useState<CardPickerHighlight | null>(null);
-  // Bumped on every successful add — tells CardPreview to flash + reset form.
+  // Bumped on every successful add — tells CardPreview to flash + reset form,
+  // and the left pane to clear/refocus its mode-appropriate input.
   const [flashCounter, setFlashCounter] = useState(0);
   const [error, setError] = useState<string | null>(null);
 
@@ -363,10 +364,10 @@ function AddEntrySection({ id }: { id: string }) {
         // filter combination refetches next time the tab is shown.
         queryClient.invalidateQueries({ queryKey: browseKey(id) }),
       ]);
-      // Refocus the picker so the user can immediately type / arrow to the
-      // next card. The preview pane is still populated with the same card,
-      // so a Tab+Enter from here repeats the add.
-      pickerRef.current?.focus();
+      // Mode-aware refocus. In Name mode the name input regains focus
+      // (preview persists for one-tab repeat-adds). In Collector-# mode
+      // the number input clears + refocuses (the set persists).
+      leftPaneRef.current?.focusForNextAdd();
     },
     onError: (err: unknown) => {
       setError(err instanceof Error ? err.message : "Failed to add entry");
@@ -401,17 +402,14 @@ function AddEntrySection({ id }: { id: string }) {
         Add card
       </h2>
 
-      <div className="mt-4 grid gap-6 md:grid-cols-2">
-        {/* Left pane: search + highlight */}
-        <div className="flex flex-col gap-3">
-          <CardPicker
-            ref={pickerRef}
+      <div className="mt-4 grid min-h-[560px] gap-6 md:grid-cols-2">
+        {/* Left pane: mode-aware picker + highlight emission. */}
+        <div className="flex flex-col gap-2">
+          <AddCardLeftPane
+            ref={leftPaneRef}
             onHighlight={setHighlight}
-            autoFocus
+            successFlashKey={flashCounter}
           />
-          <p className="font-mono text-xs text-fg-subtle">
-            Type to search · arrow keys to choose · Tab to Confirm
-          </p>
           {error && (
             <p role="alert" className="font-mono text-xs text-signal-danger">
               {error}

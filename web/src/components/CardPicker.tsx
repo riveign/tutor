@@ -1,5 +1,12 @@
 /**
- * CardPicker — type-ahead search → printing selector.
+ * CardPicker — type-ahead card search with two operating modes.
+ *
+ * Layout note (Phase 8d):
+ *   Results render INLINE in a vertical flex column that fills the parent's
+ *   available height — NOT as an absolutely-positioned popover. The parent
+ *   is expected to give us a tall slot (e.g. the left half of a split pane).
+ *   This means the right-pane preview is never visually overshadowed by an
+ *   empty picker.
  *
  * Two operating modes, controlled by which callbacks the parent passes:
  *
@@ -22,7 +29,8 @@
  *   * Down/Up cycle the highlighted result and fire `onHighlight`.
  *   * Enter on a result enters the printing chooser stage IF `onSelect` is
  *     defined; otherwise it's a no-op.
- *   * Esc closes the dropdown (or backs out of the printing chooser).
+ *   * Esc backs out of the printing chooser (no longer dismisses the inline
+ *     list — there is no "open / closed" state for the list any more).
  *   * Tab leaves the picker entirely (natural focus order).
  *
  * Notes:
@@ -77,6 +85,12 @@ export type CardPickerHighlight = {
   type_line: string;
   /** Set filter active in the current query, if any. */
   set_code_filter?: string;
+  /**
+   * Collector-number filter active for this highlight. Set by the
+   * collector-# add flow (Phase 8d) so the preview defaults to that specific
+   * printing instead of the latest-nonfoil heuristic.
+   */
+  collector_number_filter?: string;
 };
 
 /** Imperative handle so the parent can refocus the input (e.g. after submit). */
@@ -168,12 +182,11 @@ export const CardPicker = forwardRef<CardPickerHandle, CardPickerProps>(
 
     // --------------- stage state ---------------
     // null = picking oracle (or idle); set = chose an oracle, now picking
-    // among its printings.
+    // among its printings (legacy two-stage flow only).
     const [oraclePick, setOraclePick] = useState<{
       oracleId: string;
       name: string;
     } | null>(null);
-    const [dropdownOpen, setDropdownOpen] = useState(false);
     const [activeIndex, setActiveIndex] = useState(0);
 
     // Hold the latest `onHighlight` in a ref so the highlight effect's
@@ -185,10 +198,8 @@ export const CardPicker = forwardRef<CardPickerHandle, CardPickerProps>(
     }, [onHighlight]);
 
     // --------------- search query ---------------
-    const enabled =
-      oraclePick === null &&
-      dropdownOpen &&
-      tokens.q.length >= MIN_QUERY_LENGTH;
+    const queryReady = tokens.q.length >= MIN_QUERY_LENGTH;
+    const enabled = oraclePick === null && queryReady;
 
     const searchQuery = useQuery({
       queryKey: ["cards", "search", "picker", tokens.q, tokens.setCode],
@@ -234,6 +245,10 @@ export const CardPicker = forwardRef<CardPickerHandle, CardPickerProps>(
       // While the printing chooser is open we don't change the previewed card
       // (the legacy two-stage flow owns the screen at that point).
       if (oraclePick !== null) return;
+      if (!queryReady) {
+        cb(null);
+        return;
+      }
       // No usable highlight while loading / errored / empty results.
       if (!searchQuery.isSuccess) {
         cb(null);
@@ -258,6 +273,7 @@ export const CardPicker = forwardRef<CardPickerHandle, CardPickerProps>(
       activeIndex,
       results,
       searchQuery.isSuccess,
+      queryReady,
       oraclePick,
       tokens.setCode,
     ]);
@@ -310,7 +326,6 @@ export const CardPicker = forwardRef<CardPickerHandle, CardPickerProps>(
         // Reset to idle.
         setRaw("");
         setOraclePick(null);
-        setDropdownOpen(false);
         setActiveIndex(0);
       },
       [onSelect],
@@ -344,7 +359,6 @@ export const CardPicker = forwardRef<CardPickerHandle, CardPickerProps>(
 
     const pickOracle = (oracleId: string, name: string) => {
       setOraclePick({ oracleId, name });
-      setDropdownOpen(false);
     };
 
     // --------------- keyboard handler ---------------
@@ -353,14 +367,12 @@ export const CardPicker = forwardRef<CardPickerHandle, CardPickerProps>(
         if (e.key === "Escape") {
           e.preventDefault();
           setOraclePick(null);
-          setDropdownOpen(true);
         }
         return;
       }
 
       if (e.key === "ArrowDown") {
         e.preventDefault();
-        if (!dropdownOpen) setDropdownOpen(true);
         if (results.length > 0) {
           setActiveIndex((i) => (i + 1) % results.length);
         }
@@ -375,132 +387,133 @@ export const CardPicker = forwardRef<CardPickerHandle, CardPickerProps>(
       }
       if (e.key === "Enter") {
         // Highlight-only mode (no `onSelect`): Enter is a no-op. The user
-        // is expected to Tab to the preview's Confirm button. Letting the
-        // input absorb the Enter avoids accidentally submitting an
-        // enclosing <form>.
+        // is expected to Tab to the preview's Confirm button. Absorbing the
+        // event avoids accidentally submitting an enclosing <form>.
         if (!onSelect) {
-          if (dropdownOpen) e.preventDefault();
+          if (results.length > 0) e.preventDefault();
           return;
         }
-        if (!dropdownOpen || results.length === 0) return;
+        if (results.length === 0) return;
         e.preventDefault();
         const pick = results[activeIndex];
         if (pick) pickOracle(pick.oracle_id, pick.name);
         return;
       }
-      if (e.key === "Escape") {
-        if (dropdownOpen) {
-          e.preventDefault();
-          setDropdownOpen(false);
-        }
-      }
     };
 
     // --------------- render ---------------
-    const showDropdown = oraclePick === null && dropdownOpen;
     const showPrintings = oraclePick !== null;
 
     return (
-      <div className="relative">
+      <div className="flex h-full min-h-0 flex-col gap-2">
         <input
           ref={inputRef}
           type="search"
           role="combobox"
-          aria-expanded={showDropdown || showPrintings}
+          aria-expanded={!showPrintings && results.length > 0}
           aria-controls="card-picker-listbox"
           aria-autocomplete="list"
           autoFocus={autoFocus}
           value={raw}
           onChange={(e) => {
             setRaw(e.currentTarget.value);
-            setDropdownOpen(true);
             setActiveIndex(0);
-          }}
-          onFocus={() => setDropdownOpen(true)}
-          onBlur={(e) => {
-            // Defer close so a click on a result still fires.
-            const next = e.relatedTarget;
-            if (next instanceof Node && e.currentTarget.parentElement?.contains(next)) {
-              return;
-            }
-            window.setTimeout(() => setDropdownOpen(false), 120);
           }}
           onKeyDown={onKeyDown}
           placeholder={placeholder ?? "Search cards (try: Lightning Bolt set:m11)"}
           className="w-full rounded border border-border bg-surface px-3 py-2 text-sm text-fg placeholder:text-fg-subtle focus:border-border-strong focus:outline-none focus:ring-2 focus:ring-accent"
         />
 
-        {showDropdown && tokens.q.length < MIN_QUERY_LENGTH && (
-          <div className="absolute z-20 mt-1 w-full rounded border border-border bg-surface-raised px-3 py-2 font-mono text-xs text-fg-subtle shadow">
-            Type at least {MIN_QUERY_LENGTH} characters…
-          </div>
-        )}
-
-        {showDropdown && tokens.q.length >= MIN_QUERY_LENGTH && (
-          <ul
-            id="card-picker-listbox"
-            role="listbox"
-            className="absolute z-20 mt-1 max-h-80 w-full overflow-y-auto rounded border border-border bg-surface-raised shadow"
-          >
-            {searchQuery.isPending && (
-              <li className="px-3 py-2 font-mono text-xs text-fg-subtle">
-                Searching…
-              </li>
+        {/* Inline results pane fills the remaining height of the parent. */}
+        {!showPrintings && (
+          <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded border border-border bg-surface-raised">
+            {!queryReady && raw.length === 0 && (
+              <p className="px-3 py-3 font-mono text-xs text-fg-subtle">
+                Start typing a card name.
+              </p>
             )}
-            {searchQuery.isError && (
-              <li
+            {!queryReady && raw.length > 0 && (
+              <p className="px-3 py-3 font-mono text-xs text-fg-subtle">
+                Type at least {MIN_QUERY_LENGTH} characters…
+              </p>
+            )}
+            {queryReady && searchQuery.isPending && (
+              <p className="px-3 py-3 font-mono text-xs text-fg-subtle">
+                Searching…
+              </p>
+            )}
+            {queryReady && searchQuery.isError && (
+              <p
                 role="alert"
-                className="px-3 py-2 font-mono text-xs text-signal-danger"
+                className="px-3 py-3 font-mono text-xs text-signal-danger"
               >
                 Search failed: {searchQuery.error.message}
-              </li>
+              </p>
             )}
-            {searchQuery.isSuccess && results.length === 0 && (
-              <li className="px-3 py-2 font-mono text-xs text-fg-subtle">
-                No cards match.
-              </li>
+            {queryReady &&
+              searchQuery.isSuccess &&
+              results.length === 0 && (
+                <p className="px-3 py-3 font-mono text-xs text-fg-subtle">
+                  No cards match{" "}
+                  <span className="font-medium text-fg">
+                    &ldquo;{tokens.q}&rdquo;
+                  </span>
+                  .
+                </p>
+              )}
+            {queryReady && results.length > 0 && (
+              <ul
+                id="card-picker-listbox"
+                role="listbox"
+                className="min-h-0 flex-1 overflow-y-auto"
+              >
+                {results.map((card, i) => {
+                  const active = i === activeIndex;
+                  return (
+                    <li
+                      key={card.oracle_id}
+                      role="option"
+                      aria-selected={active}
+                    >
+                      <button
+                        type="button"
+                        onMouseEnter={() => setActiveIndex(i)}
+                        onMouseDown={(e) => {
+                          // Keep the input focused so the keyboard model
+                          // continues to work after a hover/click.
+                          e.preventDefault();
+                        }}
+                        onClick={() => {
+                          if (!onSelect) {
+                            setActiveIndex(i);
+                            inputRef.current?.focus();
+                            return;
+                          }
+                          pickOracle(card.oracle_id, card.name);
+                        }}
+                        className={[
+                          "flex w-full items-baseline justify-between gap-3 px-3 py-2 text-left text-sm",
+                          active
+                            ? "bg-surface-sunken text-fg ring-1 ring-accent"
+                            : "text-fg hover:bg-surface-sunken",
+                        ].join(" ")}
+                      >
+                        <span className="flex flex-1 items-baseline gap-2">
+                          <span className="font-medium">{card.name}</span>
+                          <span className="font-mono text-xs text-fg-subtle">
+                            {card.mana_cost ?? ""}
+                          </span>
+                        </span>
+                        <span className="hidden font-mono text-xs text-fg-subtle md:inline">
+                          {card.type_line}
+                        </span>
+                      </button>
+                    </li>
+                  );
+                })}
+              </ul>
             )}
-            {results.map((card, i) => (
-              <li key={card.oracle_id} role="option" aria-selected={i === activeIndex}>
-                <button
-                  type="button"
-                  onMouseEnter={() => setActiveIndex(i)}
-                  onMouseDown={(e) => {
-                    // Prevent input blur from closing the list before the
-                    // click handler resolves.
-                    e.preventDefault();
-                  }}
-                  onClick={() => {
-                    // In highlight-only mode click just sets the highlight
-                    // (the mouse-enter already did that); the parent's
-                    // preview/Confirm flow handles commit.
-                    if (!onSelect) {
-                      setActiveIndex(i);
-                      inputRef.current?.focus();
-                      return;
-                    }
-                    pickOracle(card.oracle_id, card.name);
-                  }}
-                  className={[
-                    "flex w-full items-baseline justify-between gap-3 px-3 py-2 text-left text-sm",
-                    i === activeIndex
-                      ? "bg-surface-sunken text-fg"
-                      : "text-fg hover:bg-surface-sunken",
-                  ].join(" ")}
-                >
-                  <span className="flex flex-1 items-baseline gap-2">
-                    <span className="font-medium">{card.name}</span>
-                    <span className="font-mono text-xs text-fg-subtle">
-                      {card.mana_cost ?? ""}
-                    </span>
-                  </span>
-                  <span className="hidden font-mono text-xs text-fg-subtle md:inline">
-                    {card.type_line}
-                  </span>
-                </button>
-              </li>
-            ))}
-          </ul>
+          </div>
         )}
 
         {showPrintings && (
@@ -512,7 +525,6 @@ export const CardPicker = forwardRef<CardPickerHandle, CardPickerProps>(
             printings={filteredPrintings}
             onCancel={() => {
               setOraclePick(null);
-              setDropdownOpen(true);
               inputRef.current?.focus();
             }}
             onPick={(p) =>
@@ -564,7 +576,7 @@ function PrintingChooser({
   onCancel: () => void;
 }) {
   return (
-    <div className="absolute z-20 mt-1 w-full rounded border border-border bg-surface-raised shadow">
+    <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded border border-border bg-surface-raised">
       <header className="flex items-baseline justify-between border-b border-border px-3 py-2">
         <p className="text-sm text-fg">
           <span className="font-mono text-xs uppercase tracking-widest text-fg-subtle">
@@ -600,7 +612,7 @@ function PrintingChooser({
         </p>
       )}
       {!isPending && !isError && printings.length > 0 && (
-        <ul className="max-h-80 overflow-y-auto">
+        <ul className="min-h-0 flex-1 overflow-y-auto">
           {printings.map((p) => (
             <li key={p.id}>
               <button

@@ -69,6 +69,11 @@ pub struct SearchQuery {
     /// Restrict to cards that have at least one printing in this set.
     #[serde(default)]
     pub set_code: Option<String>,
+    /// Restrict to cards that have a printing with this collector number.
+    /// Composes with `set_code` to disambiguate (the same `collector_number`
+    /// is reused across sets). Phase 8d: used by the collector-# add flow.
+    #[serde(default)]
+    pub collector_number: Option<String>,
     /// Restrict to cards legal in this format (commander, modern, …).
     #[serde(default)]
     pub format: Option<String>,
@@ -158,12 +163,25 @@ fn push_filters<'a>(qb: &mut QueryBuilder<'a, sqlx::Postgres>, q: &'a SearchQuer
         qb.push(" AND c.type_line ILIKE ")
             .push_bind(format!("%{t}%"));
     }
-    if let Some(set) = q.set_code.as_deref().filter(|s| !s.is_empty()) {
-        qb.push(
-            " AND EXISTS (SELECT 1 FROM printings p WHERE p.oracle_id = c.oracle_id AND p.set_code = ",
-        )
-        .push_bind(set.to_lowercase())
-        .push(")");
+    // `set_code` and `collector_number` both target the printings table.
+    // We fuse them into ONE EXISTS subquery so the filter means
+    // "this oracle has a printing matching {set?, collector_number?}",
+    // which is what disambiguates same-collector-# across sets.
+    let set_filter = q.set_code.as_deref().filter(|s| !s.is_empty());
+    let cn_filter = q.collector_number.as_deref().filter(|s| !s.is_empty());
+    if set_filter.is_some() || cn_filter.is_some() {
+        qb.push(" AND EXISTS (SELECT 1 FROM printings p WHERE p.oracle_id = c.oracle_id");
+        if let Some(set) = set_filter {
+            qb.push(" AND p.set_code = ").push_bind(set.to_lowercase());
+        }
+        if let Some(cn) = cn_filter {
+            // Collector numbers are case-insensitive — they can carry suffix
+            // characters like a / b / ★. Match exact (after lowercase) on
+            // the canonical text column.
+            qb.push(" AND lower(p.collector_number) = ")
+                .push_bind(cn.to_lowercase());
+        }
+        qb.push(")");
     }
     if let Some(fmt) = q.format.as_deref().filter(|s| !s.is_empty()) {
         qb.push(" AND c.legalities ->> ")

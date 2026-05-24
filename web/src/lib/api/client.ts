@@ -10,6 +10,10 @@ export type SearchParams = NonNullable<
   operations["search_cards"]["parameters"]["query"]
 >;
 
+export type ListSetsParams = NonNullable<
+  operations["list_sets"]["parameters"]["query"]
+>;
+
 export class ApiError extends Error {
   constructor(
     message: string,
@@ -72,6 +76,14 @@ export const api = {
       request<CardDetail>(`/cards/${encodeURIComponent(oracleId)}`),
   },
   sets: {
-    list: () => request<SetSummary[]>("/sets"),
+    /**
+     * Fetch the sets reference.
+     *   * `list()` returns the newest 50 sets (default `limit` server-side).
+     *   * `list({ q })` filters by case-insensitive substring against
+     *     `code` or `name`.
+     *   * `list({ limit })` overrides the default cap (server clamps to 500).
+     */
+    list: (params: ListSetsParams = {}) =>
+      request<SetSummary[]>(`/sets${qs(params)}`),
   },
 };
