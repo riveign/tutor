@@ -38,6 +38,177 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/collections": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List every collection with its distinct-printing count and total-quantity
+         *     rollup. Sorted by `created_at` desc.
+         */
+        get: operations["list_collections"];
+        put?: never;
+        post: operations["create_collection"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/collections/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["get_collection"];
+        put?: never;
+        post?: never;
+        delete: operations["delete_collection"];
+        options?: never;
+        head?: never;
+        patch: operations["update_collection"];
+        trace?: never;
+    };
+    "/api/collections/{id}/entries": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["list_entries"];
+        put?: never;
+        /**
+         * Add an entry to a collection.
+         * @description **Collapsing behaviour:** if a row already exists with the same
+         *     `(collection_id, printing_id, finish, language, condition)` tuple, the
+         *     existing row's `quantity` is incremented by the requested quantity instead
+         *     of failing the unique constraint. Provenance fields (`acquired_at`,
+         *     `acquired_from`, `notes`) on a collapse are *only* overwritten when a
+         *     non-null value is supplied — otherwise the existing provenance is preserved.
+         */
+        post: operations["create_entry"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/collections/{id}/entries/{entry_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete: operations["delete_entry"];
+        options?: never;
+        head?: never;
+        /**
+         * Partial update for an entry.
+         * @description **Delete-on-zero:** when `quantity = 0` is supplied, the row is deleted
+         *     and the endpoint returns `204 No Content`. The DB-level CHECK constraint
+         *     (`quantity > 0`) forbids writing a 0-row, so we honour that by removing
+         *     the entry — matches the "physical pile" mental model: 0 means "gone".
+         */
+        patch: operations["update_entry"];
+        trace?: never;
+    };
+    "/api/decks": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List every deck with main / total quantity + distinct-entry rollups.
+         *     Single SQL round-trip; aggregates come from a LEFT JOIN + GROUP BY.
+         */
+        get: operations["list_decks"];
+        put?: never;
+        post: operations["create_deck"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/decks/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["get_deck"];
+        put?: never;
+        post?: never;
+        delete: operations["delete_deck"];
+        options?: never;
+        head?: never;
+        patch: operations["update_deck"];
+        trace?: never;
+    };
+    "/api/decks/{id}/entries": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Flat list of all entries in a deck, ordered by zone then created_at. */
+        get: operations["list_deck_entries"];
+        put?: never;
+        /**
+         * Add an entry to a deck.
+         * @description **Collapsing behaviour:** if a row already exists with the same
+         *     `(deck_id, oracle_id, zone)` tuple, the existing row's `quantity` is
+         *     incremented by the requested quantity instead of failing the unique
+         *     constraint. `printing_id` and `notes` are only overwritten when the
+         *     incoming value is non-null (preserves earlier pinning / annotations on
+         *     top-ups).
+         */
+        post: operations["create_deck_entry"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/decks/{id}/entries/{entry_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete: operations["delete_deck_entry"];
+        options?: never;
+        head?: never;
+        /**
+         * Partial update for a deck entry.
+         * @description **Delete-on-zero:** `quantity = 0` deletes the row and returns 204.
+         *
+         *     **Zone-conflict:** if `zone` is supplied and another row already exists at
+         *     `(deck_id, oracle_id, new_zone)`, the request is rejected with 409 rather
+         *     than silently merging — the user almost certainly didn't mean to lose
+         *     quantity data.
+         */
+        patch: operations["update_deck_entry"];
+        trace?: never;
+    };
     "/api/health": {
         parameters: {
             query?: never;
@@ -62,7 +233,6 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** All known sets, newest first. */
         get: operations["list_sets"];
         put?: never;
         post?: never;
@@ -76,6 +246,8 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /** @enum {string} */
+        CardCondition: "mint" | "near_mint" | "lightly_played" | "moderately_played" | "heavily_played" | "damaged";
         CardDetail: {
             color_identity: string[];
             colors: string[];
@@ -111,6 +283,8 @@ export interface components {
             toughness?: string | null;
             type_line?: string | null;
         };
+        /** @enum {string} */
+        CardFinish: "nonfoil" | "foil" | "etched" | "glossy";
         CardSummary: {
             color_identity: string[];
             colors: string[];
@@ -123,6 +297,116 @@ export interface components {
             /** Format: uuid */
             oracle_id: string;
             type_line: string;
+        };
+        CollectionDetail: {
+            /** Format: date-time */
+            created_at: string;
+            description?: string | null;
+            /** Format: int64 */
+            distinct_printings: number;
+            /** Format: uuid */
+            id: string;
+            kind: string;
+            name: string;
+            /** Format: int64 */
+            total_quantity: number;
+            /** Format: date-time */
+            updated_at: string;
+        };
+        /**
+         * @description A `collection_entries` row joined with its printing's denormalised display
+         *     fields (printing name + set + collector number). Used by both the entries
+         *     list endpoint and create/update responses for symmetry.
+         */
+        CollectionEntry: {
+            /** Format: date */
+            acquired_at?: string | null;
+            acquired_from?: string | null;
+            /** Format: uuid */
+            collection_id: string;
+            collector_number: string;
+            condition: components["schemas"]["CardCondition"];
+            /** Format: date-time */
+            created_at: string;
+            finish: components["schemas"]["CardFinish"];
+            /** Format: uuid */
+            id: string;
+            language: string;
+            notes?: string | null;
+            /** Format: uuid */
+            printing_id: string;
+            printing_name: string;
+            /** Format: int32 */
+            quantity: number;
+            set_code: string;
+            /** Format: date-time */
+            updated_at: string;
+        };
+        /**
+         * @description One row in the `GET /collections` list response. Counts are computed in the
+         *     same query that returns the collection row (single SQL round-trip per list).
+         */
+        CollectionSummary: {
+            /** Format: date-time */
+            created_at: string;
+            description?: string | null;
+            /**
+             * Format: int64
+             * @description Number of distinct entry rows (each row is a printing+finish+language+condition tuple).
+             */
+            distinct_printings: number;
+            /** Format: uuid */
+            id: string;
+            kind: string;
+            name: string;
+            /**
+             * Format: int64
+             * @description Sum of `quantity` across every entry in the collection.
+             */
+            total_quantity: number;
+            /** Format: date-time */
+            updated_at: string;
+        };
+        CreateCollectionBody: {
+            description?: string | null;
+            kind?: string | null;
+            name: string;
+        };
+        CreateDeckBody: {
+            archetype?: string | null;
+            /** Format: uuid */
+            commander_oracle_id?: string | null;
+            description?: string | null;
+            format?: string | null;
+            name: string;
+            /** Format: uuid */
+            partner_oracle_id?: string | null;
+        };
+        CreateDeckEntryBody: {
+            notes?: string | null;
+            /** Format: uuid */
+            oracle_id: string;
+            /**
+             * Format: uuid
+             * @description Optional — pin this deck slot to a specific physical printing.
+             */
+            printing_id?: string | null;
+            /** Format: int32 */
+            quantity: number;
+            zone?: null | components["schemas"]["DeckZone"];
+        };
+        CreateEntryBody: {
+            /** Format: date */
+            acquired_at?: string | null;
+            acquired_from?: string | null;
+            condition?: null | components["schemas"]["CardCondition"];
+            finish?: null | components["schemas"]["CardFinish"];
+            language?: string | null;
+            notes?: string | null;
+            /** Format: uuid */
+            printing_id: string;
+            /** Format: int32 */
+            quantity: number;
         };
         /**
          * @description Row counts for the core Scryfall-sourced tables. Lets the UI render a
@@ -139,6 +423,106 @@ export interface components {
         DbStatus: {
             connected: boolean;
             error?: string | null;
+        };
+        Deck: {
+            archetype?: string | null;
+            color_identity: string[];
+            /** Format: uuid */
+            commander_oracle_id?: string | null;
+            /** Format: date-time */
+            created_at: string;
+            description?: string | null;
+            format?: string | null;
+            /** Format: uuid */
+            id: string;
+            name: string;
+            /** Format: uuid */
+            partner_oracle_id?: string | null;
+            /** Format: date-time */
+            updated_at: string;
+        };
+        /** @description A `deck_entries` row joined with the oracle card's display fields. */
+        DeckEntry: {
+            /** @description Collector number of the pinned printing, if any. */
+            collector_number?: string | null;
+            /** Format: date-time */
+            created_at: string;
+            /** Format: uuid */
+            deck_id: string;
+            /** Format: uuid */
+            id: string;
+            notes?: string | null;
+            /** Format: uuid */
+            oracle_id: string;
+            oracle_name: string;
+            /** Format: uuid */
+            printing_id?: string | null;
+            /** Format: int32 */
+            quantity: number;
+            /** @description Set code of the pinned printing, if any. */
+            set_code?: string | null;
+            /** Format: date-time */
+            updated_at: string;
+            zone: components["schemas"]["DeckZone"];
+        };
+        /**
+         * @description One row in `GET /decks`. Includes a small zone-count rollup so the list page
+         *     can render the size of each zone without a second round-trip.
+         */
+        DeckSummary: {
+            archetype?: string | null;
+            color_identity: string[];
+            /** Format: uuid */
+            commander_oracle_id?: string | null;
+            /** Format: date-time */
+            created_at: string;
+            description?: string | null;
+            /**
+             * Format: int64
+             * @description Number of distinct entry rows (any zone).
+             */
+            distinct_entries: number;
+            format?: string | null;
+            /** Format: uuid */
+            id: string;
+            /**
+             * Format: int64
+             * @description Total quantity in the `main` zone (most common at-a-glance number).
+             */
+            main_quantity: number;
+            name: string;
+            /** Format: uuid */
+            partner_oracle_id?: string | null;
+            /**
+             * Format: int64
+             * @description Total quantity across every zone.
+             */
+            total_quantity: number;
+            /** Format: date-time */
+            updated_at: string;
+        };
+        DeckWithEntries: {
+            deck: components["schemas"]["Deck"];
+            entries: components["schemas"]["EntriesByZone"];
+        };
+        /** @enum {string} */
+        DeckZone: "main" | "side" | "maybe" | "command" | "companion";
+        /** @description Entries grouped by zone. Order within each zone is by `created_at` ASC. */
+        EntriesByZone: {
+            command: components["schemas"]["DeckEntry"][];
+            companion: components["schemas"]["DeckEntry"][];
+            main: components["schemas"]["DeckEntry"][];
+            maybe: components["schemas"]["DeckEntry"][];
+            side: components["schemas"]["DeckEntry"][];
+        };
+        EntriesPage: {
+            items: components["schemas"]["CollectionEntry"][];
+            /** Format: int64 */
+            page: number;
+            /** Format: int64 */
+            page_size: number;
+            /** Format: int64 */
+            total: number;
         };
         HealthStatus: {
             data: components["schemas"]["DataStatus"];
@@ -176,6 +560,46 @@ export interface components {
             /** Format: date */
             released_at?: string | null;
             set_type?: string | null;
+        };
+        UpdateCollectionBody: {
+            description?: string | null;
+            kind?: string | null;
+            name?: string | null;
+        };
+        UpdateDeckBody: {
+            archetype?: string | null;
+            /** Format: uuid */
+            commander_oracle_id?: string | null;
+            description?: string | null;
+            format?: string | null;
+            name?: string | null;
+            /** Format: uuid */
+            partner_oracle_id?: string | null;
+        };
+        UpdateDeckEntryBody: {
+            notes?: string | null;
+            /** Format: uuid */
+            printing_id?: string | null;
+            /**
+             * Format: int32
+             * @description Setting `quantity = 0` deletes the row (CHECK constraint forbids 0).
+             */
+            quantity?: number | null;
+            zone?: null | components["schemas"]["DeckZone"];
+        };
+        UpdateEntryBody: {
+            /** Format: date */
+            acquired_at?: string | null;
+            acquired_from?: string | null;
+            condition?: null | components["schemas"]["CardCondition"];
+            finish?: null | components["schemas"]["CardFinish"];
+            language?: string | null;
+            notes?: string | null;
+            /**
+             * Format: int32
+             * @description Setting `quantity = 0` deletes the row (the CHECK constraint forbids 0).
+             */
+            quantity?: number | null;
         };
     };
     responses: never;
@@ -254,6 +678,572 @@ export interface operations {
             };
             /** @description no card with that oracle_id */
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    list_collections: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CollectionSummary"][];
+                };
+            };
+        };
+    };
+    create_collection: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateCollectionBody"];
+            };
+        };
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CollectionDetail"];
+                };
+            };
+            /** @description validation error */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    get_collection: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CollectionDetail"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    delete_collection: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description deleted; cascades entries */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    update_collection: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateCollectionBody"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CollectionDetail"];
+                };
+            };
+            /** @description validation error */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    list_entries: {
+        parameters: {
+            query?: {
+                /** @description 1-based page number. Defaults to 1. */
+                page?: number | null;
+                /** @description Page size; defaults to 50, capped at 200. */
+                page_size?: number | null;
+            };
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EntriesPage"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    create_entry: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateEntryBody"];
+            };
+        };
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CollectionEntry"];
+                };
+            };
+            /** @description validation error */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    delete_entry: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+                entry_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    update_entry: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+                entry_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateEntryBody"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CollectionEntry"];
+                };
+            };
+            /** @description quantity was 0; entry deleted */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description validation error */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    list_decks: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeckSummary"][];
+                };
+            };
+        };
+    };
+    create_deck: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateDeckBody"];
+            };
+        };
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Deck"];
+                };
+            };
+            /** @description validation error */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    get_deck: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeckWithEntries"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    delete_deck: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description deleted; cascades entries */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    update_deck: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateDeckBody"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Deck"];
+                };
+            };
+            /** @description validation error */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    list_deck_entries: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeckEntry"][];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    create_deck_entry: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateDeckEntryBody"];
+            };
+        };
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeckEntry"];
+                };
+            };
+            /** @description validation error */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    delete_deck_entry: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+                entry_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    update_deck_entry: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+                entry_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateDeckEntryBody"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeckEntry"];
+                };
+            };
+            /** @description quantity was 0; entry deleted */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description validation error */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description zone change collides with existing entry */
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };

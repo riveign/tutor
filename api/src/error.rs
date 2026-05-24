@@ -14,6 +14,11 @@ pub enum ApiError {
     #[error("{0}")]
     Validation(String),
 
+    /// 409-class conflict (e.g. a write would violate a domain invariant
+    /// like the deck-entry unique constraint when a user moves zones).
+    #[error("{0}")]
+    Conflict(String),
+
     #[error("database error: {0}")]
     Database(#[from] sqlx::Error),
 
@@ -33,6 +38,7 @@ impl IntoResponse for ApiError {
         let (status, message) = match &self {
             ApiError::NotFound => (StatusCode::NOT_FOUND, self.to_string()),
             ApiError::Validation(msg) => (StatusCode::BAD_REQUEST, msg.clone()),
+            ApiError::Conflict(msg) => (StatusCode::CONFLICT, msg.clone()),
             ApiError::Database(e) => {
                 tracing::error!(error = ?e, "database error");
                 (

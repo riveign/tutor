@@ -20,6 +20,9 @@ export function RootLayout() {
           <NavLink to="/collections" className={navClass}>
             Collections
           </NavLink>
+          <NavLink to="/decks" className={navClass}>
+            Decks
+          </NavLink>
         </nav>
       </header>
       <Outlet />

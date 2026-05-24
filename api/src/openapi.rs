@@ -1,6 +1,6 @@
 use utoipa::OpenApi;
 
-use crate::routes::{cards, collections, health, sets};
+use crate::routes::{cards, collections, decks, health, sets};
 
 #[derive(OpenApi)]
 #[openapi(
@@ -23,6 +23,15 @@ use crate::routes::{cards, collections, health, sets};
         collections::create_entry,
         collections::update_entry,
         collections::delete_entry,
+        decks::list_decks,
+        decks::create_deck,
+        decks::get_deck,
+        decks::update_deck,
+        decks::delete_deck,
+        decks::list_entries,
+        decks::create_entry,
+        decks::update_entry,
+        decks::delete_entry,
     ),
     components(schemas(
         health::HealthStatus,
@@ -44,12 +53,23 @@ use crate::routes::{cards, collections, health, sets};
         collections::CreateEntryBody,
         collections::UpdateEntryBody,
         collections::EntriesPage,
+        decks::DeckZone,
+        decks::Deck,
+        decks::DeckSummary,
+        decks::DeckEntry,
+        decks::EntriesByZone,
+        decks::DeckWithEntries,
+        decks::CreateDeckBody,
+        decks::UpdateDeckBody,
+        decks::CreateDeckEntryBody,
+        decks::UpdateDeckEntryBody,
     )),
     tags(
         (name = "health", description = "Liveness and dependency probes"),
         (name = "cards", description = "Oracle catalog browse + detail"),
         (name = "sets", description = "MTG sets reference"),
         (name = "collections", description = "User-owned physical collections and their entries"),
+        (name = "decks", description = "Virtual decks (oracle-id lists) with zones and commander metadata"),
     ),
 )]
 pub struct ApiDoc;

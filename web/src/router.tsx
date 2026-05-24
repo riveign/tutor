@@ -6,6 +6,8 @@ import { HomePage } from "@/routes/HomePage";
 import { RootLayout } from "@/routes/RootLayout";
 import { CollectionsList } from "@/pages/CollectionsList";
 import { CollectionDetailPage } from "@/pages/CollectionDetail";
+import { DecksList } from "@/pages/DecksList";
+import { DeckDetailPage } from "@/pages/DeckDetail";
 
 export const router = createBrowserRouter([
   {
@@ -17,6 +19,8 @@ export const router = createBrowserRouter([
       { path: "cards/:oracleId", element: <CardDetailPage /> },
       { path: "collections", element: <CollectionsList /> },
       { path: "collections/:id", element: <CollectionDetailPage /> },
+      { path: "decks", element: <DecksList /> },
+      { path: "decks/:id", element: <DeckDetailPage /> },
     ],
   },
 ]);
