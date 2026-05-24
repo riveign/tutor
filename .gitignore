@@ -44,3 +44,6 @@ test-results/
 # Scryfall bulk-data cache (machine-local)
 **/data/scryfall/
 **/data/images/
+
+# MUX / scratch session output (orchestrator scratch space)
+tmp/
