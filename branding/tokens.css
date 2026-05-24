@@ -1,44 +1,50 @@
 /*
- * Tutor — Design Tokens (baseline)
+ * Tutor — Design Tokens (Field Manual)
  *
- * This is a neutral baseline so the Phase 2 scaffold compiles and renders.
- * Values get refined after the brand direction is selected (see brief.md).
- * The token *names* (the contract) are stable — only the values evolve.
+ * Source of truth for color, type, spacing, radii, shadow, motion.
+ * Tailwind reads these via `theme.extend` in `web/tailwind.config.ts`.
  *
- * Light theme is the canonical theme. Dark is derived from the same contract.
+ * Light is canonical. Dark is derived from the same contract.
+ *
+ * Notes:
+ * - Greens, reds, ambers, steel-blues are shifted OUTSIDE the WUBRG
+ *   color identity palette. WUBRG itself will get dedicated tokens
+ *   when mana-cost / color-identity widgets land.
+ * - All paired tokens meet WCAG AA against their intended surface.
  */
 
 :root {
-  /* Color — surfaces */
-  --color-surface: #fafafa;
-  --color-surface-elevated: #ffffff;
-  --color-surface-sunken: #f2f2f2;
+  /* === SURFACES === */
+  --color-surface: #f1ecde;            /* cream paper */
+  --color-surface-raised: #f8f4e8;     /* cards, panels */
+  --color-surface-sunken: #e6dfcb;     /* wells, table headers */
 
-  /* Color — text */
-  --color-fg: #18181b;
-  --color-fg-muted: #52525b;
-  --color-fg-subtle: #a1a1aa;
+  /* === FOREGROUND === */
+  --color-fg: #2a2a2a;                 /* graphite ink */
+  --color-fg-muted: #6a6a65;           /* secondary */
+  --color-fg-subtle: #8a8a82;          /* tertiary, captions */
 
-  /* Color — borders */
-  --color-border: #e4e4e7;
-  --color-border-strong: #d4d4d8;
+  /* === BORDERS === */
+  --color-border: #d4cdb6;
+  --color-border-strong: #a89f84;
 
-  /* Color — accent (single brand color, swapped per direction) */
-  --color-accent: #1f4f7a;
-  --color-accent-hover: #163e60;
-  --color-accent-fg: #ffffff;
+  /* === ACCENT === */
+  --color-accent: #5f7a3c;             /* working green */
+  --color-accent-hover: #4d6431;
+  --color-accent-fg: #fafaf7;          /* on-accent text */
 
-  /* Color — semantic signals (success / warning / danger) */
-  --color-success: #2f7a3d;
-  --color-warning: #c9892a;
-  --color-danger: #9e3b3b;
+  /* === SIGNALS === */
+  --color-success: #5f7a3c;            /* same as accent — green is "good" */
+  --color-warning: #b07e26;            /* amber */
+  --color-danger: #9e3b3b;             /* working red */
+  --color-info: #4a6a82;               /* steel blue */
 
-  /* Color — focus ring */
+  /* === FOCUS === */
   --color-focus: var(--color-accent);
 
-  /* Typography */
-  --font-display: "Source Serif 4", Georgia, serif;
-  --font-body: "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
+  /* === TYPOGRAPHY === */
+  --font-sans: "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-serif: "Roboto Slab", Georgia, "Times New Roman", serif;
   --font-mono: "JetBrains Mono", ui-monospace, "SFMono-Regular", monospace;
 
   --text-xs: 0.75rem;
@@ -54,7 +60,7 @@
   --leading-normal: 1.5;
   --leading-relaxed: 1.625;
 
-  /* Spacing scale (4px base) */
+  /* === SPACING (4px base) === */
   --space-1: 0.25rem;
   --space-2: 0.5rem;
   --space-3: 0.75rem;
@@ -68,77 +74,82 @@
   --space-20: 5rem;
   --space-24: 6rem;
 
-  /* Radius */
-  --radius-sm: 0.25rem;
-  --radius-md: 0.5rem;
-  --radius-lg: 0.75rem;
-  --radius-xl: 1rem;
+  /* === RADIUS === */
+  --radius-sm: 0.125rem;               /* Field Manual prefers tight corners */
+  --radius: 0.25rem;
+  --radius-md: 0.375rem;
+  --radius-lg: 0.5rem;
+  --radius-xl: 0.75rem;
   --radius-full: 9999px;
 
-  /* Shadow */
-  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.04);
-  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.08);
-  --shadow-lg: 0 12px 32px rgba(0, 0, 0, 0.12);
+  /* === SHADOW (light, restrained — this is paper, not glass) === */
+  --shadow-sm: 0 1px 0 rgba(42, 42, 42, 0.06);
+  --shadow: 0 1px 2px rgba(42, 42, 42, 0.08);
+  --shadow-md: 0 2px 6px rgba(42, 42, 42, 0.10);
+  --shadow-lg: 0 8px 24px rgba(42, 42, 42, 0.14);
 
-  /* Motion */
+  /* === MOTION === */
   --motion-fast: 120ms;
-  --motion-normal: 200ms;
+  --motion-base: 200ms;
   --motion-slow: 320ms;
   --easing-standard: cubic-bezier(0.2, 0, 0, 1);
 }
 
 [data-theme="dark"] {
-  /* Surfaces flip; relationships stay the same */
-  --color-surface: #0d0d10;
-  --color-surface-elevated: #18181c;
-  --color-surface-sunken: #050507;
+  --color-surface: #1b1a17;            /* graphite */
+  --color-surface-raised: #23211d;
+  --color-surface-sunken: #141311;
 
-  --color-fg: #f4f4f5;
-  --color-fg-muted: #a1a1aa;
-  --color-fg-subtle: #71717a;
+  --color-fg: #ede6d2;                 /* bone */
+  --color-fg-muted: #a8a294;
+  --color-fg-subtle: #777264;
 
-  --color-border: #27272a;
-  --color-border-strong: #3f3f46;
+  --color-border: #3a3731;
+  --color-border-strong: #5a5448;
 
-  --color-accent: #4a90c2;
-  --color-accent-hover: #67a4d2;
-  --color-accent-fg: #0d0d10;
+  --color-accent: #a4c273;              /* lifted working green */
+  --color-accent-hover: #b6d28a;
+  --color-accent-fg: #161613;
 
-  --color-success: #5fa971;
-  --color-warning: #e2a64f;
-  --color-danger: #c46060;
+  --color-success: #a4c273;
+  --color-warning: #d9a24a;
+  --color-danger: #d87474;
+  --color-info: #86a4c4;
 
-  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
-  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.5);
-  --shadow-lg: 0 12px 32px rgba(0, 0, 0, 0.6);
+  --shadow-sm: 0 1px 0 rgba(0, 0, 0, 0.40);
+  --shadow: 0 1px 2px rgba(0, 0, 0, 0.50);
+  --shadow-md: 0 2px 6px rgba(0, 0, 0, 0.55);
+  --shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.65);
 }
 
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
-    --color-surface: #0d0d10;
-    --color-surface-elevated: #18181c;
-    --color-surface-sunken: #050507;
-    --color-fg: #f4f4f5;
-    --color-fg-muted: #a1a1aa;
-    --color-fg-subtle: #71717a;
-    --color-border: #27272a;
-    --color-border-strong: #3f3f46;
-    --color-accent: #4a90c2;
-    --color-accent-hover: #67a4d2;
-    --color-accent-fg: #0d0d10;
-    --color-success: #5fa971;
-    --color-warning: #e2a64f;
-    --color-danger: #c46060;
-    --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
-    --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.5);
-    --shadow-lg: 0 12px 32px rgba(0, 0, 0, 0.6);
+    --color-surface: #1b1a17;
+    --color-surface-raised: #23211d;
+    --color-surface-sunken: #141311;
+    --color-fg: #ede6d2;
+    --color-fg-muted: #a8a294;
+    --color-fg-subtle: #777264;
+    --color-border: #3a3731;
+    --color-border-strong: #5a5448;
+    --color-accent: #a4c273;
+    --color-accent-hover: #b6d28a;
+    --color-accent-fg: #161613;
+    --color-success: #a4c273;
+    --color-warning: #d9a24a;
+    --color-danger: #d87474;
+    --color-info: #86a4c4;
+    --shadow-sm: 0 1px 0 rgba(0, 0, 0, 0.40);
+    --shadow: 0 1px 2px rgba(0, 0, 0, 0.50);
+    --shadow-md: 0 2px 6px rgba(0, 0, 0, 0.55);
+    --shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.65);
   }
 }
 
 @media (prefers-reduced-motion: reduce) {
   :root {
     --motion-fast: 0ms;
-    --motion-normal: 0ms;
+    --motion-base: 0ms;
     --motion-slow: 0ms;
   }
 }

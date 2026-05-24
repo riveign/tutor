@@ -70,6 +70,26 @@ V1 dev does not depend on this choice — Docker-based local is the contract.
 
 Sibling to other projects in `mantis-dev/`.
 
+## 2026-05-24 — Brand direction: **C, Field Manual**
+
+Cream paper + graphite + working-green/working-red palette; slab serif display (Roboto Slab) + Inter body + JetBrains Mono. Most distinctive of the three directions while still calm and tool-like.
+
+Direction A (Reading Room) was closest to the *tutor = search the library* metaphor but risked reading as too quiet. Direction B (Modern Brutalist) was easiest to maintain at scale but its cold neutrality fought the "thinking partner" voice. Both were strong; C wins on distinctiveness without sacrificing voice.
+
+Greens/reds/ambers are deliberately desaturated and shifted **outside** MTG's WUBRG palette so they don't collide with color-identity semantics in the UI. WUBRG itself will get dedicated `--color-mana-*` tokens when mana-cost widgets land.
+
+## 2026-05-24 — Data model: single-user, oracle/printing split, m:n taxonomy with `source`
+
+Phase 3 schema (migrations 0002–0005). Core decisions:
+
+- **Single-user / no auth in V1.** Schema has no `owner_id` columns. When multi-user lands, add `owner_id uuid REFERENCES users(id)` and partial unique indexes per owner.
+- **Oracle vs printing split.** `cards` is keyed by Scryfall `oracle_id` (one row per unique gameplay card); `printings` is keyed by Scryfall `card.id` (one row per physical printing). Collections track printings (you own a specific printing); decks track oracle cards (the gameplay-relevant identity) and *optionally* lock a `printing_id` when a physical copy is reserved.
+- **Faces table.** `card_faces` holds per-face data for DFC/transform/split/adventure cards; single-face cards have one row.
+- **Tagging with `source` in the primary key.** `card_effect_tags` and `card_functional_roles` are m:n joins keyed by `(oracle_id, tag_id, source)`. A rule-based tagger, a manual override, and community data can all coexist independently. Each assertion carries an optional `confidence` (0..1) and free-form `notes`.
+- **`pg_trgm` for name/type search**, GIN on text-array columns (`color_identity`, `colors`, `keywords`, `produced_mana`). Avoids needing a separate search engine for V1.
+- **`set_updated_at()` trigger function** attached to every row-mutable table — keeps `updated_at` honest without app-layer code.
+- **Tutor-derived flags on cards**: `affects_board_on_cast` and `fetchable_land_types`. Populated by our analyzer (Phase 6), not by Scryfall.
+
 ## 2026-05-24 — Four collaborating agents
 
 `tutor-pm`, `tutor-engineer`, `tutor-mtg-expert`, `tutor-brand-design`. Defined in `.claude/agents/`. The orchestrating Claude routes phases; each agent has a tight charter (see their definitions). Plan → approval → implement → verify, at every phase.

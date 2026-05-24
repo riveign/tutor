@@ -15,8 +15,14 @@
     background: var(--color-surface);
     color: var(--color-fg);
     font-family: var(--font-sans);
-    font-feature-settings: "ss01", "cv11";
     -webkit-font-smoothing: antialiased;
     text-rendering: optimizeLegibility;
+  }
+
+  /* Tabular numerals everywhere card data appears (counts, prices, mana values). */
+  .font-mono,
+  table,
+  [role="grid"] {
+    font-variant-numeric: tabular-nums;
   }
 }
