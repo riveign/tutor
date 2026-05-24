@@ -11,7 +11,18 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Paginated catalog search. */
+        /**
+         * Paginated catalog search.
+         * @description Three flavours, controlled by `collection_id` + `grouping`:
+         *       * Unscoped (no `collection_id`): catalog-wide oracle browse. Existing
+         *         Phase 5 behaviour; `owned_quantity` and printing fields are omitted.
+         *       * `collection_id` + `grouping=oracle` (default): one row per oracle
+         *         card owned in that collection. `owned_quantity` is the sum across
+         *         every printing/finish/language/condition row the user holds.
+         *       * `collection_id` + `grouping=printing`: one row per `collection_entries`
+         *         row, with printing identity (set_code, collector_number, finish,
+         *         language, condition) populated on each result.
+         */
         get: operations["search_cards"];
         put?: never;
         post?: never;
@@ -286,16 +297,36 @@ export interface components {
         /** @enum {string} */
         CardFinish: "nonfoil" | "foil" | "etched" | "glossy";
         CardSummary: {
+            collector_number?: string | null;
             color_identity: string[];
             colors: string[];
+            condition?: string | null;
             /** Format: int32 */
             edhrec_rank?: number | null;
+            finish?: string | null;
+            language?: string | null;
             mana_cost?: string | null;
             /** Format: float */
             mana_value: number;
             name: string;
             /** Format: uuid */
             oracle_id: string;
+            /**
+             * Format: int64
+             * @description Total copies owned in the scoped collection.
+             *     `None` when the search is not scoped to a collection.
+             *     When `grouping = oracle`, this is the sum across every printing /
+             *     finish / language / condition of the card the user holds.
+             *     When `grouping = printing`, this is the quantity of the single
+             *     `collection_entries` row this result represents.
+             */
+            owned_quantity?: number | null;
+            /**
+             * Format: uuid
+             * @description Printing identity, only populated when `grouping = printing`.
+             */
+            printing_id?: string | null;
+            set_code?: string | null;
             type_line: string;
         };
         CollectionDetail: {
@@ -524,6 +555,17 @@ export interface components {
             /** Format: int64 */
             total: number;
         };
+        /**
+         * @description How to group results when scoping by `collection_id`. Ignored otherwise.
+         *
+         *       * `oracle` (default): one row per oracle card; `owned_quantity` is the
+         *         sum across every printing/finish/condition the user owns.
+         *       * `printing`: one row per `collection_entries` row (printing × finish ×
+         *         language × condition tuple); each row carries the printing-level
+         *         identity in the optional fields on `CardSummary`.
+         * @enum {string}
+         */
+        Grouping: "oracle" | "printing";
         HealthStatus: {
             data: components["schemas"]["DataStatus"];
             db: components["schemas"]["DbStatus"];
@@ -635,6 +677,17 @@ export interface operations {
                 set_code?: string;
                 /** @description Restrict to cards legal in this format (commander, modern, …). */
                 format?: string;
+                /**
+                 * @description Scope results to cards owned in this collection. When set, each
+                 *     row carries `owned_quantity` (>=1); when unset, the unscoped catalog
+                 *     is searched and `owned_quantity` is omitted.
+                 */
+                collection_id?: string;
+                /**
+                 * @description Row grouping for collection-scoped browse. Only meaningful when
+                 *     `collection_id` is set. Defaults to `oracle`.
+                 */
+                grouping?: components["schemas"]["Grouping"];
                 /** @description 1-indexed page number. */
                 page?: number;
                 /** @description Page size; clamped to MAX_PAGE_SIZE. */

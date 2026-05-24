@@ -42,6 +42,7 @@ use crate::routes::{cards, collections, decks, health, sets};
         cards::CardDetail,
         cards::CardFace,
         cards::PrintingSummary,
+        cards::Grouping,
         sets::SetSummary,
         collections::CardFinish,
         collections::CardCondition,

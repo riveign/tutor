@@ -7,6 +7,7 @@ import {
 } from "@tanstack/react-query";
 import { Link, useParams } from "react-router-dom";
 
+import { CardBrowser } from "@/components/CardBrowser";
 import {
   CardPicker,
   type CardPickerHandle,
@@ -31,6 +32,16 @@ function collectionKey(id: string): QueryKey {
 function entriesKey(id: string): QueryKey {
   return ["collections", id, "entries"];
 }
+/**
+ * Query-key prefix for the per-collection browse view. Any mutation that
+ * changes which printings the user owns (or how many) must invalidate this
+ * prefix so the Browse tab picks up the change after a switch.
+ */
+function browseKey(id: string): QueryKey {
+  return ["collections", id, "browse"];
+}
+
+type CollectionTab = "entries" | "browse";
 
 export function CollectionDetailPage() {
   const { id } = useParams<{ id: string }>();
@@ -54,10 +65,10 @@ function CollectionDetailInner({ id }: { id: string }) {
     queryFn: () => collections.get(id),
   });
 
-  const entriesQuery = useQuery({
-    queryKey: entriesKey(id),
-    queryFn: () => collections.listEntries(id, 1, 200),
-  });
+  // Tab state is intentionally LOCAL (not URL-driven) — the "Browse" tab
+  // owns its own filter state inside `CardBrowser`, and we don't want either
+  // tab to leak filters into the parent route's URL.
+  const [tab, setTab] = useState<CollectionTab>("entries");
 
   return (
     <main className="mx-auto flex min-h-full max-w-5xl flex-col gap-10 px-6 py-12">
@@ -67,11 +78,92 @@ function CollectionDetailInner({ id }: { id: string }) {
             Collections
           </Link>
           {" / "}
-          {collectionQuery.data?.name ?? "…"}
+          {collectionQuery.data?.name ?? "\u2026"}
         </p>
         <CollectionHeader query={collectionQuery} />
       </header>
 
+      <TabSwitcher value={tab} onChange={setTab} />
+
+      {tab === "entries" && <EntriesTabPanel id={id} />}
+      {tab === "browse" && (
+        <BrowseTabPanel id={id} onSwitchToEntries={() => setTab("entries")} />
+      )}
+    </main>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Tab switcher
+// ---------------------------------------------------------------------------
+
+/**
+ * Simple two-option segmented control. Implemented as a `role="tablist"` so
+ * arrow-key navigation and aria semantics work without a heavyweight library.
+ */
+function TabSwitcher({
+  value,
+  onChange,
+}: {
+  value: CollectionTab;
+  onChange: (next: CollectionTab) => void;
+}) {
+  const options: Array<{ key: CollectionTab; label: string }> = [
+    { key: "entries", label: "Entries" },
+    { key: "browse", label: "Browse" },
+  ];
+  const onKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
+    if (e.key !== "ArrowLeft" && e.key !== "ArrowRight") return;
+    e.preventDefault();
+    const idx = options.findIndex((o) => o.key === value);
+    const next = options[(idx + (e.key === "ArrowRight" ? 1 : -1) + options.length) % options.length];
+    if (next) onChange(next.key);
+  };
+
+  return (
+    <div
+      role="tablist"
+      aria-label="Collection view"
+      onKeyDown={onKeyDown}
+      className="inline-flex rounded-lg border border-border bg-surface-raised p-1"
+    >
+      {options.map((opt) => {
+        const active = opt.key === value;
+        return (
+          <button
+            key={opt.key}
+            type="button"
+            role="tab"
+            aria-selected={active}
+            tabIndex={active ? 0 : -1}
+            onClick={() => onChange(opt.key)}
+            className={[
+              "rounded px-4 py-1.5 font-mono text-xs uppercase tracking-widest transition-colors",
+              active
+                ? "bg-accent text-accent-fg"
+                : "text-fg-subtle hover:text-fg",
+            ].join(" ")}
+          >
+            {opt.label}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Entries tab panel
+// ---------------------------------------------------------------------------
+
+function EntriesTabPanel({ id }: { id: string }) {
+  const entriesQuery = useQuery({
+    queryKey: entriesKey(id),
+    queryFn: () => collections.listEntries(id, 1, 200),
+  });
+
+  return (
+    <div className="flex flex-col gap-10" role="tabpanel" aria-label="Entries">
       <AddEntrySection id={id} />
 
       <section aria-labelledby="entries-heading">
@@ -84,7 +176,7 @@ function CollectionDetailInner({ id }: { id: string }) {
 
         <div className="mt-4">
           {entriesQuery.isPending && (
-            <p className="text-fg-muted">Loading entries…</p>
+            <p className="text-fg-muted">Loading entries{"\u2026"}</p>
           )}
           {entriesQuery.isError && (
             <p className="text-signal-danger" role="alert">
@@ -105,7 +197,94 @@ function CollectionDetailInner({ id }: { id: string }) {
           )}
         </div>
       </section>
-    </main>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Browse tab panel (Phase 8b)
+// ---------------------------------------------------------------------------
+
+function BrowseTabPanel({
+  id,
+  onSwitchToEntries,
+}: {
+  id: string;
+  onSwitchToEntries: () => void;
+}) {
+  // Local toggle — Phase 8b deliberately keeps grouping out of the URL.
+  const [grouping, setGrouping] = useState<"oracle" | "printing">("oracle");
+
+  return (
+    <div className="flex flex-col gap-4" role="tabpanel" aria-label="Browse">
+      <div className="flex items-center justify-between">
+        <h2 className="font-mono text-xs uppercase tracking-widest text-fg-subtle">
+          Browse your collection
+        </h2>
+        <GroupingToggle value={grouping} onChange={setGrouping} />
+      </div>
+
+      <CardBrowser
+        collectionId={id}
+        grouping={grouping}
+        emptyMessage={
+          <span>
+            No cards yet{" \u2014 "}
+            <button
+              type="button"
+              onClick={onSwitchToEntries}
+              className="font-mono text-xs uppercase tracking-widest text-fg underline hover:no-underline"
+            >
+              add some via the Entries tab
+            </button>
+            .
+          </span>
+        }
+      />
+    </div>
+  );
+}
+
+/** Oracle / Printing radio-group as a pair of buttons. */
+function GroupingToggle({
+  value,
+  onChange,
+}: {
+  value: "oracle" | "printing";
+  onChange: (next: "oracle" | "printing") => void;
+}) {
+  const options: Array<{ key: "oracle" | "printing"; label: string }> = [
+    { key: "oracle", label: "Oracle" },
+    { key: "printing", label: "Printing" },
+  ];
+
+  return (
+    <div
+      role="radiogroup"
+      aria-label="Group results by"
+      className="inline-flex rounded border border-border bg-surface"
+    >
+      {options.map((opt) => {
+        const active = opt.key === value;
+        return (
+          <button
+            key={opt.key}
+            type="button"
+            role="radio"
+            aria-checked={active}
+            onClick={() => onChange(opt.key)}
+            className={[
+              "px-3 py-1 font-mono text-xs uppercase tracking-widest transition-colors",
+              active
+                ? "bg-accent text-accent-fg"
+                : "text-fg-subtle hover:text-fg",
+            ].join(" ")}
+          >
+            {opt.label}
+          </button>
+        );
+      })}
+    </div>
   );
 }
 
@@ -216,11 +395,14 @@ function AddEntrySection({ id }: { id: string }) {
     mutationFn: (body: CreateEntryBody) => collections.createEntry(id, body),
     onSuccess: async (created) => {
       setError(null);
-      setLastAdded(`${created.printing_name} ×${created.quantity}`);
+      setLastAdded(`${created.printing_name} \u00d7${created.quantity}`);
       resetToIdle();
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: entriesKey(id) }),
         queryClient.invalidateQueries({ queryKey: collectionKey(id) }),
+        // Browse tab caches per-filter — invalidate by prefix so any open
+        // filter combination refetches next time the tab is shown.
+        queryClient.invalidateQueries({ queryKey: browseKey(id) }),
       ]);
       // Refocus the search box so the user can immediately type the next
       // card — the core "bulk add" UX promise.
@@ -576,10 +758,11 @@ function EntryRow({
 
     onSuccess: async () => {
       // Refetch to pick up server-derived fields (updated_at) and refresh
-      // the parent collection totals.
+      // the parent collection totals + browse cache (Phase 8b).
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: entriesKey(collectionId) }),
         queryClient.invalidateQueries({ queryKey: collectionKey(collectionId) }),
+        queryClient.invalidateQueries({ queryKey: browseKey(collectionId) }),
       ]);
     },
   });
@@ -615,6 +798,7 @@ function EntryRow({
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: entriesKey(collectionId) }),
         queryClient.invalidateQueries({ queryKey: collectionKey(collectionId) }),
+        queryClient.invalidateQueries({ queryKey: browseKey(collectionId) }),
       ]);
     },
   });

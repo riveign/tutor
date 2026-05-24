@@ -55,6 +55,8 @@ fn empty_query() -> SearchQuery {
         type_line: None,
         set_code: None,
         format: None,
+        collection_id: None,
+        grouping: None,
         page: None,
         page_size: None,
     }

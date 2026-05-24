@@ -90,6 +90,14 @@ Phase 3 schema (migrations 0002–0005). Core decisions:
 - **`set_updated_at()` trigger function** attached to every row-mutable table — keeps `updated_at` honest without app-layer code.
 - **Tutor-derived flags on cards**: `affects_board_on_cast` and `fetchable_land_types`. Populated by our analyzer (Phase 6), not by Scryfall.
 
+## 2026-05-24 — Phase 8b: collection browse extends `/cards/search`, doesn't fork it
+
+Browsing a single collection ("show me only what I own in this pile, with the same filters as the global catalog") could live behind a new endpoint, but the Phase 5 search shape — filters, pagination, response envelope — is exactly the shape the UI needs scoped. Extending the existing handler with two optional query params (`collection_id`, `grouping`) and additive optional fields on `CardSummary` (`owned_quantity`, `printing_id`, `set_code`, `collector_number`, `finish`, `language`, `condition`) keeps both surfaces a single contract and lets the frontend reuse one component for both.
+
+Rejected alternative: a new `GET /collections/{id}/browse` mirror. That would duplicate the filter parser, the pagination clamps, the OpenAPI annotations, and force the React side to maintain two near-identical hooks. The additive-extension cost is one extra SQL subquery for the `owned_quantity` rollup and one branch for the printing-grouped path.
+
+On the FE, `BrowsePage` (the global `/cards` UI) was reduced to a thin wrapper and a new reusable `<CardBrowser />` component owns the form + result table. `CollectionDetail` mounts a two-tab control (`Entries | Browse`) — local React state, not URL-driven, so filter state stays scoped to the tab. The Browse tab has an `Oracle | Printing` radio toggle for grouping. Cache key for the scoped browse is `["collections", id, "browse", { ...filters, grouping, page }]`; the existing add/patch/delete mutations were updated to invalidate by `["collections", id, "browse"]` prefix.
+
 ## 2026-05-24 — Four collaborating agents
 
 `tutor-pm`, `tutor-engineer`, `tutor-mtg-expert`, `tutor-brand-design`. Defined in `.claude/agents/`. The orchestrating Claude routes phases; each agent has a tight charter (see their definitions). Plan → approval → implement → verify, at every phase.

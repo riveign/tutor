@@ -31,6 +31,21 @@ pub fn router() -> Router<AppState> {
 // Search
 // =============================================================================
 
+/// How to group results when scoping by `collection_id`. Ignored otherwise.
+///
+///   * `oracle` (default): one row per oracle card; `owned_quantity` is the
+///     sum across every printing/finish/condition the user owns.
+///   * `printing`: one row per `collection_entries` row (printing × finish ×
+///     language × condition tuple); each row carries the printing-level
+///     identity in the optional fields on `CardSummary`.
+#[derive(Debug, Clone, Copy, Default, Deserialize, PartialEq, Eq, ToSchema)]
+#[serde(rename_all = "lowercase")]
+pub enum Grouping {
+    #[default]
+    Oracle,
+    Printing,
+}
+
 /// Query string for `/cards/search`. All filters are AND-ed.
 #[derive(Debug, Deserialize, IntoParams)]
 #[into_params(parameter_in = Query)]
@@ -57,6 +72,15 @@ pub struct SearchQuery {
     /// Restrict to cards legal in this format (commander, modern, …).
     #[serde(default)]
     pub format: Option<String>,
+    /// Scope results to cards owned in this collection. When set, each
+    /// row carries `owned_quantity` (>=1); when unset, the unscoped catalog
+    /// is searched and `owned_quantity` is omitted.
+    #[serde(default)]
+    pub collection_id: Option<Uuid>,
+    /// Row grouping for collection-scoped browse. Only meaningful when
+    /// `collection_id` is set. Defaults to `oracle`.
+    #[serde(default)]
+    pub grouping: Option<Grouping>,
     /// 1-indexed page number.
     #[serde(default)]
     pub page: Option<i64>,
@@ -75,6 +99,27 @@ pub struct CardSummary {
     pub colors: Vec<String>,
     pub color_identity: Vec<String>,
     pub edhrec_rank: Option<i32>,
+    /// Total copies owned in the scoped collection.
+    /// `None` when the search is not scoped to a collection.
+    /// When `grouping = oracle`, this is the sum across every printing /
+    /// finish / language / condition of the card the user holds.
+    /// When `grouping = printing`, this is the quantity of the single
+    /// `collection_entries` row this result represents.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub owned_quantity: Option<i64>,
+    /// Printing identity, only populated when `grouping = printing`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub printing_id: Option<Uuid>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub set_code: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub collector_number: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub finish: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub language: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub condition: Option<String>,
 }
 
 #[derive(Debug, Serialize, ToSchema)]
@@ -128,6 +173,16 @@ fn push_filters<'a>(qb: &mut QueryBuilder<'a, sqlx::Postgres>, q: &'a SearchQuer
 }
 
 /// Paginated catalog search.
+///
+/// Three flavours, controlled by `collection_id` + `grouping`:
+///   * Unscoped (no `collection_id`): catalog-wide oracle browse. Existing
+///     Phase 5 behaviour; `owned_quantity` and printing fields are omitted.
+///   * `collection_id` + `grouping=oracle` (default): one row per oracle
+///     card owned in that collection. `owned_quantity` is the sum across
+///     every printing/finish/language/condition row the user holds.
+///   * `collection_id` + `grouping=printing`: one row per `collection_entries`
+///     row, with printing identity (set_code, collector_number, finish,
+///     language, condition) populated on each result.
 #[utoipa::path(
     get,
     path = "/api/cards/search",
@@ -146,14 +201,49 @@ pub async fn search_cards(
         .clamp(1, MAX_PAGE_SIZE);
     let offset = (page - 1) * page_size;
 
+    let collection_id = q.collection_id;
+    let grouping = q.grouping.unwrap_or_default();
+
+    // Printing-grouped browse short-circuits to its own query path. The
+    // remaining branches all read from `cards c` with identical projection.
+    if let Some(cid) = collection_id {
+        if grouping == Grouping::Printing {
+            return search_collection_printings(&state.db, &q, cid, page, page_size, offset)
+                .await
+                .map(Json);
+        }
+    }
+
     let total = count_search(&state.db, &q).await?;
 
     let mut items_qb = QueryBuilder::<sqlx::Postgres>::new(
         "SELECT c.oracle_id, c.name, c.mana_cost, c.mana_value, c.type_line, \
-         c.colors, c.color_identity, c.edhrec_rank \
-         FROM cards c WHERE 1=1",
+         c.colors, c.color_identity, c.edhrec_rank",
     );
+    if let Some(cid) = collection_id {
+        // Sum every owned copy of every printing of this oracle in the scoped
+        // collection. Subquery keeps the outer GROUP BY off.
+        items_qb.push(
+            ", (SELECT COALESCE(SUM(e.quantity), 0)::bigint \
+                 FROM collection_entries e \
+                 JOIN printings p2 ON p2.id = e.printing_id \
+                 WHERE e.collection_id = ",
+        );
+        items_qb.push_bind(cid);
+        items_qb.push(" AND p2.oracle_id = c.oracle_id) AS owned_quantity");
+    }
+    items_qb.push(" FROM cards c WHERE 1=1");
     push_filters(&mut items_qb, &q);
+    if let Some(cid) = collection_id {
+        // Restrict to oracles the user actually owns in the scoped collection.
+        items_qb.push(
+            " AND EXISTS (SELECT 1 FROM collection_entries e \
+                 JOIN printings p ON p.id = e.printing_id \
+                 WHERE e.collection_id = ",
+        );
+        items_qb.push_bind(cid);
+        items_qb.push(" AND p.oracle_id = c.oracle_id)");
+    }
     items_qb.push(" ORDER BY c.edhrec_rank ASC NULLS LAST, c.name ASC LIMIT ");
     items_qb.push_bind(page_size);
     items_qb.push(" OFFSET ");
@@ -176,6 +266,13 @@ pub async fn search_cards(
             colors: r.get("colors"),
             color_identity: r.get("color_identity"),
             edhrec_rank: r.get("edhrec_rank"),
+            owned_quantity: collection_id.map(|_| r.get::<i64, _>("owned_quantity")),
+            printing_id: None,
+            set_code: None,
+            collector_number: None,
+            finish: None,
+            language: None,
+            condition: None,
         })
         .collect();
 
@@ -190,8 +287,91 @@ pub async fn search_cards(
 async fn count_search(pool: &PgPool, q: &SearchQuery) -> Result<i64, ApiError> {
     let mut qb = QueryBuilder::<sqlx::Postgres>::new("SELECT count(*) FROM cards c WHERE 1=1");
     push_filters(&mut qb, q);
+    if let Some(cid) = q.collection_id {
+        qb.push(
+            " AND EXISTS (SELECT 1 FROM collection_entries e \
+                 JOIN printings p ON p.id = e.printing_id \
+                 WHERE e.collection_id = ",
+        );
+        qb.push_bind(cid);
+        qb.push(" AND p.oracle_id = c.oracle_id)");
+    }
     let row = qb.build().fetch_one(pool).await?;
     Ok(row.get::<i64, _>(0))
+}
+
+/// Printing-grouped browse: one row per `collection_entries` row, joined with
+/// the printing + card so we can apply the same filter set.
+async fn search_collection_printings(
+    pool: &PgPool,
+    q: &SearchQuery,
+    collection_id: Uuid,
+    page: i64,
+    page_size: i64,
+    offset: i64,
+) -> ApiResult<SearchResponse> {
+    // Build a shared FROM/WHERE that both the count + the items query reuse.
+    fn push_from_where<'a>(
+        qb: &mut QueryBuilder<'a, sqlx::Postgres>,
+        q: &'a SearchQuery,
+        collection_id: Uuid,
+    ) {
+        qb.push(
+            " FROM collection_entries e \
+              JOIN printings p ON p.id = e.printing_id \
+              JOIN cards c ON c.oracle_id = p.oracle_id \
+              WHERE e.collection_id = ",
+        );
+        qb.push_bind(collection_id);
+        push_filters(qb, q);
+    }
+
+    let mut count_qb = QueryBuilder::<sqlx::Postgres>::new("SELECT count(*)::bigint");
+    push_from_where(&mut count_qb, q, collection_id);
+    let total: i64 = count_qb.build().fetch_one(pool).await?.get(0);
+
+    let mut items_qb = QueryBuilder::<sqlx::Postgres>::new(
+        "SELECT c.oracle_id, c.name, c.mana_cost, c.mana_value, c.type_line, \
+         c.colors, c.color_identity, c.edhrec_rank, \
+         e.quantity::bigint AS owned_quantity, \
+         e.printing_id, p.set_code, p.collector_number, \
+         e.finish::text AS finish, e.language, e.condition::text AS condition",
+    );
+    push_from_where(&mut items_qb, q, collection_id);
+    items_qb.push(" ORDER BY c.name ASC, p.set_code ASC, p.collector_number ASC LIMIT ");
+    items_qb.push_bind(page_size);
+    items_qb.push(" OFFSET ");
+    items_qb.push_bind(offset);
+
+    let rows = items_qb.build().fetch_all(pool).await?;
+
+    let items = rows
+        .into_iter()
+        .map(|r| CardSummary {
+            oracle_id: r.get("oracle_id"),
+            name: r.get("name"),
+            mana_cost: r.get("mana_cost"),
+            mana_value: r.get("mana_value"),
+            type_line: r.get("type_line"),
+            colors: r.get("colors"),
+            color_identity: r.get("color_identity"),
+            edhrec_rank: r.get("edhrec_rank"),
+            owned_quantity: Some(r.get::<i64, _>("owned_quantity")),
+            printing_id: Some(r.get("printing_id")),
+            set_code: Some(r.get("set_code")),
+            collector_number: Some(r.get("collector_number")),
+            finish: Some(r.get("finish")),
+            language: Some(r.get("language")),
+            condition: Some(r.get("condition")),
+        })
+        .collect();
+
+    Ok(SearchResponse {
+        total,
+        page,
+        page_size,
+        items,
+    })
 }
 
 // =============================================================================
