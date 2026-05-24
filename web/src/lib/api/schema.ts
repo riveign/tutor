@@ -4,6 +4,40 @@
  */
 
 export interface paths {
+    "/api/cards/search": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Paginated catalog search. */
+        get: operations["search_cards"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/cards/{oracle_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Full oracle card with all faces and the most recent printings. */
+        get: operations["get_card"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/health": {
         parameters: {
             query?: never;
@@ -21,18 +55,127 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/sets": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** All known sets, newest first. */
+        get: operations["list_sets"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        CardDetail: {
+            color_identity: string[];
+            colors: string[];
+            /** Format: int32 */
+            edhrec_rank?: number | null;
+            faces: components["schemas"]["CardFace"][];
+            keywords: string[];
+            layout: string;
+            legalities: unknown;
+            loyalty?: string | null;
+            mana_cost?: string | null;
+            /** Format: float */
+            mana_value: number;
+            name: string;
+            /** Format: uuid */
+            oracle_id: string;
+            oracle_text?: string | null;
+            power?: string | null;
+            printings: components["schemas"]["PrintingSummary"][];
+            toughness?: string | null;
+            type_line: string;
+        };
+        CardFace: {
+            artist?: string | null;
+            colors: string[];
+            /** Format: int32 */
+            face_index: number;
+            loyalty?: string | null;
+            mana_cost?: string | null;
+            name: string;
+            oracle_text?: string | null;
+            power?: string | null;
+            toughness?: string | null;
+            type_line?: string | null;
+        };
+        CardSummary: {
+            color_identity: string[];
+            colors: string[];
+            /** Format: int32 */
+            edhrec_rank?: number | null;
+            mana_cost?: string | null;
+            /** Format: float */
+            mana_value: number;
+            name: string;
+            /** Format: uuid */
+            oracle_id: string;
+            type_line: string;
+        };
+        /**
+         * @description Row counts for the core Scryfall-sourced tables. Lets the UI render a
+         *     "is the catalog loaded?" signal and lets ops verify ingest worked.
+         */
+        DataStatus: {
+            /** Format: int64 */
+            cards: number;
+            /** Format: int64 */
+            printings: number;
+            /** Format: int64 */
+            sets: number;
+        };
         DbStatus: {
             connected: boolean;
             error?: string | null;
         };
         HealthStatus: {
+            data: components["schemas"]["DataStatus"];
             db: components["schemas"]["DbStatus"];
             status: string;
             version: string;
+        };
+        PrintingSummary: {
+            collector_number: string;
+            finishes: string[];
+            /** Format: uuid */
+            id: string;
+            image_uris: unknown;
+            rarity: string;
+            /** Format: date */
+            released_at?: string | null;
+            set_code: string;
+            set_name: string;
+        };
+        SearchResponse: {
+            items: components["schemas"]["CardSummary"][];
+            /** Format: int64 */
+            page: number;
+            /** Format: int64 */
+            page_size: number;
+            /** Format: int64 */
+            total: number;
+        };
+        SetSummary: {
+            /** Format: int32 */
+            card_count?: number | null;
+            code: string;
+            icon_svg_uri?: string | null;
+            name: string;
+            /** Format: date */
+            released_at?: string | null;
+            set_type?: string | null;
         };
     };
     responses: never;
@@ -43,6 +186,81 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
+    search_cards: {
+        parameters: {
+            query?: {
+                /** @description Free-text name match (case-insensitive substring). */
+                q?: string;
+                /**
+                 * @description Colors the card uses, comma-separated WUBRG single letters
+                 *     (e.g. "U,R"). Matches if any of the card's `colors` are in the set.
+                 */
+                colors?: string;
+                /**
+                 * @description Color identity, comma-separated WUBRG. Matches if the card's
+                 *     `color_identity` is a subset of the given set — i.e. the card is
+                 *     playable in a commander deck of that identity.
+                 */
+                color_identity?: string;
+                /**
+                 * @description Case-insensitive substring match on `type_line` (e.g. "Creature",
+                 *     "Instant", "Legendary Artifact").
+                 */
+                type_line?: string;
+                /** @description Restrict to cards that have at least one printing in this set. */
+                set_code?: string;
+                /** @description Restrict to cards legal in this format (commander, modern, …). */
+                format?: string;
+                /** @description 1-indexed page number. */
+                page?: number;
+                /** @description Page size; clamped to MAX_PAGE_SIZE. */
+                page_size?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SearchResponse"];
+                };
+            };
+        };
+    };
+    get_card: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Scryfall oracle_id */
+                oracle_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CardDetail"];
+                };
+            };
+            /** @description no card with that oracle_id */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
     get_health: {
         parameters: {
             query?: never;
@@ -58,6 +276,25 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HealthStatus"];
+                };
+            };
+        };
+    };
+    list_sets: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SetSummary"][];
                 };
             };
         };
