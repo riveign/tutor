@@ -10,7 +10,7 @@ use crate::routes::health;
         description = "API for Tutor, the MTG collection and deckbuilding companion.",
     ),
     paths(health::get_health),
-    components(schemas(health::HealthStatus, health::DbStatus)),
+    components(schemas(health::HealthStatus, health::DbStatus, health::DataStatus)),
     tags(
         (name = "health", description = "Liveness and dependency probes"),
     ),

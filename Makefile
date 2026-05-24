@@ -10,6 +10,7 @@ API_DIR := api
 WEB_DIR := web
 
 .PHONY: help bootstrap db-up db-down db-logs db-reset api web dev migrate codegen \
+        ingest-sets ingest-cards ingest-printings ingest-all \
         test test-api test-web lint lint-api lint-web fmt fmt-api typecheck clean
 
 help:
@@ -24,6 +25,10 @@ help:
 	@echo "  make dev           db-up + api + web concurrently"
 	@echo "  make migrate       run sqlx migrations once via the api binary"
 	@echo "  make codegen       regenerate the typed web client from openapi.json"
+	@echo "  make ingest-sets   sync /sets from scryfall into postgres"
+	@echo "  make ingest-cards  sync oracle_cards bulk into cards + card_faces"
+	@echo "  make ingest-printings  sync default_cards bulk into printings"
+	@echo "  make ingest-all    ingest sets, then cards, then printings"
 	@echo "  make test          run cargo test + vitest"
 	@echo "  make lint          cargo clippy + eslint"
 	@echo "  make fmt           cargo fmt"
@@ -68,6 +73,18 @@ migrate: db-up
 
 codegen:
 	cd $(WEB_DIR) && pnpm codegen
+
+ingest-sets: db-up
+	cd $(API_DIR) && cargo run --bin tutor-ingest -- sets
+
+ingest-cards: db-up
+	cd $(API_DIR) && cargo run --bin tutor-ingest -- cards
+
+ingest-printings: db-up
+	cd $(API_DIR) && cargo run --bin tutor-ingest -- printings
+
+ingest-all: db-up
+	cd $(API_DIR) && cargo run --bin tutor-ingest -- all
 
 test: test-api test-web
 

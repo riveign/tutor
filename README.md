@@ -50,6 +50,31 @@ Then:
 | `make lint`       | `cargo clippy -D warnings` + `eslint`                |
 | `make typecheck`  | `tsc --noEmit` for the web app                       |
 | `make db-reset`   | Wipe and recreate the Postgres volume                |
+| `make ingest-all` | Sync sets, oracle cards, and printings from Scryfall |
+
+### Ingesting the Scryfall catalog
+
+The catalog (sets, oracle cards, printings) is populated by `tutor-ingest`, a
+CLI that lives alongside the API binary. Bulk JSON files are cached at
+`$TUTOR_DATA_DIR` (default `data/scryfall/`) and only re-downloaded when
+Scryfall reports a newer `updated_at`.
+
+```bash
+make ingest-sets        # /sets endpoint, ~1s
+make ingest-cards       # ~30k oracle cards, ~1-2 min
+make ingest-printings   # ~500k printings, ~5-10 min
+make ingest-all         # sets, then cards, then printings
+```
+
+After ingest, `GET /api/health` reports row counts under `data.{sets,cards,printings}`.
+Pass `--refresh` to the underlying binary to force re-download:
+
+```bash
+cd api && cargo run --bin tutor-ingest -- cards --refresh
+```
+
+The client respects Scryfall's etiquette (50-100 ms gap between requests,
+identifying User-Agent, retries on 429).
 
 ### Vite + inotify on Linux
 

@@ -1,0 +1,22 @@
+{
+  "data": [
+    {
+      "code": "lea",
+      "name": "Limited Edition Alpha",
+      "set_type": "core",
+      "released_at": "1993-08-05",
+      "card_count": 295,
+      "icon_svg_uri": "https://example.invalid/lea.svg",
+      "scryfall_uri": "https://scryfall.com/sets/lea"
+    },
+    {
+      "code": "neo",
+      "name": "Kamigawa: Neon Dynasty",
+      "set_type": "expansion",
+      "released_at": "2022-02-18",
+      "card_count": 302,
+      "icon_svg_uri": "https://example.invalid/neo.svg",
+      "scryfall_uri": "https://scryfall.com/sets/neo"
+    }
+  ]
+}
