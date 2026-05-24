@@ -1,0 +1,33 @@
+[package]
+name = "tutor-api"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[dependencies]
+axum.workspace = true
+tokio.workspace = true
+tower.workspace = true
+tower-http.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+sqlx.workspace = true
+reqwest.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
+utoipa.workspace = true
+utoipa-swagger-ui.workspace = true
+anyhow.workspace = true
+thiserror.workspace = true
+dotenvy.workspace = true
+chrono.workspace = true
+uuid.workspace = true
+
+[lib]
+name = "tutor_api"
+path = "src/lib.rs"
+
+[[bin]]
+name = "tutor-api"
+path = "src/main.rs"
