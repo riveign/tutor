@@ -324,25 +324,11 @@ export function CardPreview({
     <PreviewShell>
       <form
         onSubmit={handleSubmit}
-        className="flex h-full flex-col gap-4"
+        className="grid h-full gap-5 sm:grid-cols-[1fr_auto]"
         aria-live="polite"
       >
-        {/* Image */}
-        <div className="flex justify-center">
-          {imageUrl ? (
-            <img
-              src={imageUrl}
-              alt={`${selection.name} card art`}
-              loading="lazy"
-              className="max-h-[420px] w-auto rounded-lg border border-border bg-surface object-contain shadow"
-            />
-          ) : (
-            <div className="flex h-[280px] w-[200px] items-center justify-center rounded-lg border border-border bg-surface font-mono text-xs text-fg-subtle">
-              {detailQuery.isPending ? "loading…" : "no image"}
-            </div>
-          )}
-        </div>
-
+        {/* Left column: textual identity + form fields */}
+        <div className="flex min-w-0 flex-col gap-4">
         {/* Identity */}
         <div className="flex flex-col gap-1">
           <div className="flex items-baseline justify-between gap-3">
@@ -523,6 +509,23 @@ export function CardPreview({
             Failed to load card detail: {detailQuery.error.message}
           </p>
         )}
+        </div>
+
+        {/* Right column: card image (capped width so the form keeps room) */}
+        <div className="flex sm:justify-end">
+          {imageUrl ? (
+            <img
+              src={imageUrl}
+              alt={`${selection.name} card art`}
+              loading="lazy"
+              className="h-auto w-full max-w-[200px] rounded-lg border border-border bg-surface object-contain shadow"
+            />
+          ) : (
+            <div className="flex h-[280px] w-[200px] items-center justify-center rounded-lg border border-border bg-surface font-mono text-xs text-fg-subtle">
+              {detailQuery.isPending ? "loading…" : "no image"}
+            </div>
+          )}
+        </div>
       </form>
     </PreviewShell>
   );

@@ -151,6 +151,23 @@ export const CollectorNumberPicker = forwardRef<
     onHighlightRef.current = onHighlight;
   }, [onHighlight]);
 
+  // `emit` must be declared BEFORE the effect that depends on it — the
+  // effect's dependency array reads `emit` on every render, and a `const`
+  // binding is in the temporal dead zone until its initializer runs.
+  const emit = useCallback(
+    (card: CardSummary, set: SetSummary, cn: string) => {
+      onHighlightRef.current({
+        oracle_id: card.oracle_id,
+        name: card.name,
+        mana_cost: card.mana_cost ?? null,
+        type_line: card.type_line,
+        set_code_filter: set.code,
+        collector_number_filter: cn,
+      });
+    },
+    [],
+  );
+
   useEffect(() => {
     if (!enabled || !selectedSet) return;
     if (!lookupQuery.isSuccess) {
@@ -174,20 +191,6 @@ export const CollectorNumberPicker = forwardRef<
     normalized,
     emit,
   ]);
-
-  const emit = useCallback(
-    (card: CardSummary, set: SetSummary, cn: string) => {
-      onHighlightRef.current({
-        oracle_id: card.oracle_id,
-        name: card.name,
-        mana_cost: card.mana_cost ?? null,
-        type_line: card.type_line,
-        set_code_filter: set.code,
-        collector_number_filter: cn,
-      });
-    },
-    [],
-  );
 
   const submit = () => {
     const trimmed = rawNumber.trim();
