@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   useMutation,
   useQuery,
@@ -7,16 +7,17 @@ import {
 } from "@tanstack/react-query";
 import { Link, useParams } from "react-router-dom";
 
-import {
-  AddCardLeftPane,
-  type AddCardLeftPaneHandle,
-} from "@/components/AddCardLeftPane";
 import { CardBrowser } from "@/components/CardBrowser";
-import type { CardPickerHighlight } from "@/components/CardPicker";
+import {
+  CardPicker,
+  type CardPickerHandle,
+  type CardPickerHighlight,
+} from "@/components/CardPicker";
 import {
   CardPreview,
   type CardPreviewConfirmPayload,
 } from "@/components/CardPreview";
+import { CollectorNumberInlineRow } from "@/components/CollectorNumberInlineRow";
 import {
   collections,
   type CollectionDetail,
@@ -329,28 +330,45 @@ function CollectionHeader({
 }
 
 // ---------------------------------------------------------------------------
-// Add-entry section — split pane (Phase 8c)
+// Add-entry section (Phase 8g)
 //
-// Left pane: keyboard-driven CardPicker (search + arrow-key highlight).
-// Right pane: live CardPreview of the currently HIGHLIGHTED row (image, name,
-// oracle text, finish/qty/condition inputs, Confirm).
+// Two add modes, layout per mode:
 //
-// The preview deliberately persists after a successful add — only the form
-// fields reset, the selection stays. That makes repeat-adds of the same card
-// a single Tab+Enter.
+//   * Name mode: existing split pane — CardPicker (left) drives an external
+//     CardPreview (right) with oracle text + large image. Best for
+//     disambiguating cards you know by name.
+//
+//   * Collector # mode: a single inline horizontal "rip-the-pack" row
+//     (CollectorNumberInlineRow). Type set → number → Enter → eyeball thumb
+//     → Confirm. No split-pane; the user works left-to-right in one rhythm
+//     and never scrolls.
+//
+// The section header is intentionally compact — title only, no flow caption,
+// minimal padding — so the actual work surface starts as close to the top
+// of the section as possible.
 // ---------------------------------------------------------------------------
+
+type AddMode = "name" | "collector";
 
 function AddEntrySection({ id }: { id: string }) {
   const queryClient = useQueryClient();
-  const leftPaneRef = useRef<AddCardLeftPaneHandle>(null);
+  const namePickerRef = useRef<CardPickerHandle>(null);
 
-  // The currently highlighted oracle row in the picker. `null` while the
-  // input is empty or no results.
+  const [mode, setMode] = useState<AddMode>("name");
+  // Name-mode picker → preview wiring. Unused in collector mode (the inline
+  // row owns its own equivalent state internally).
   const [highlight, setHighlight] = useState<CardPickerHighlight | null>(null);
-  // Bumped on every successful add — tells CardPreview to flash + reset form,
-  // and the left pane to clear/refocus its mode-appropriate input.
+  // Bumped on every successful add — triggers the per-mode reset.
   const [flashCounter, setFlashCounter] = useState(0);
   const [error, setError] = useState<string | null>(null);
+
+  // Switching modes clears any in-flight Name-mode highlight so the preview
+  // doesn't paint stale data behind the new layout. The collector row owns
+  // its own state and resets on mount.
+  useEffect(() => {
+    setHighlight(null);
+    setError(null);
+  }, [mode]);
 
   const addMutation = useMutation({
     mutationFn: (body: CreateEntryBody) => collections.createEntry(id, body),
@@ -364,10 +382,12 @@ function AddEntrySection({ id }: { id: string }) {
         // filter combination refetches next time the tab is shown.
         queryClient.invalidateQueries({ queryKey: browseKey(id) }),
       ]);
-      // Mode-aware refocus. In Name mode the name input regains focus
-      // (preview persists for one-tab repeat-adds). In Collector-# mode
-      // the number input clears + refocuses (the set persists).
-      leftPaneRef.current?.focusForNextAdd();
+      // Name mode: refocus the name input (preview persists for one-tab
+      // repeat-adds). Collector mode: the inline row handles its own
+      // clear+refocus via successFlashKey.
+      if (mode === "name") {
+        namePickerRef.current?.focus();
+      }
     },
     onError: (err: unknown) => {
       setError(err instanceof Error ? err.message : "Failed to add entry");
@@ -375,9 +395,6 @@ function AddEntrySection({ id }: { id: string }) {
   });
 
   const handleConfirm = (payload: CardPreviewConfirmPayload) => {
-    // CardPreview produces a fully-validated payload; we just shape it into
-    // the API contract (oracle_id isn't sent server-side — printing_id is
-    // the authoritative join key).
     addMutation.mutate({
       printing_id: payload.printing_id,
       quantity: payload.quantity,
@@ -393,51 +410,120 @@ function AddEntrySection({ id }: { id: string }) {
   return (
     <section
       aria-labelledby="add-entry-heading"
-      className="rounded-lg border border-border bg-surface-raised p-6 shadow"
+      className="rounded-lg border border-border bg-surface-raised p-4 shadow"
     >
-      {/* Header — clearer hierarchy: serif title + mono caption that
-          documents the input → preview → confirm flow. */}
-      <div className="flex flex-col gap-1 border-b border-border pb-4">
+      {/* Compact header: serif title + mode toggle on one row. No subtitle
+          — the action verb "Add card" plus the visible mode toggle is the
+          whole hierarchy. */}
+      <div className="flex items-center justify-between gap-4 pb-3">
         <h2
           id="add-entry-heading"
-          className="font-serif text-2xl leading-tight text-fg"
+          className="font-serif text-xl leading-tight text-fg"
         >
           Add card
         </h2>
-        <p className="font-mono text-xs uppercase tracking-widest text-fg-subtle">
-          Search <span aria-hidden="true">·</span> Preview{" "}
-          <span aria-hidden="true">·</span> Confirm
-        </p>
+        <AddCardModeToggle value={mode} onChange={setMode} />
       </div>
 
-      {/* Equal-height two-pane layout. `items-stretch` ensures both children
-          inherit the same row height, fixing the lopsided rhythm where the
-          right pane was much taller than the left. */}
-      <div className="mt-5 grid min-h-[520px] gap-6 md:grid-cols-2 md:items-stretch">
-        {/* Left pane: mode-aware picker + highlight emission. Same surface
-            chrome as `CardPreview` so the two panes read as a matched pair. */}
-        <div className="flex min-h-0 flex-col gap-2 rounded-lg border border-border bg-surface p-5 shadow-sm">
-          <AddCardLeftPane
-            ref={leftPaneRef}
-            onHighlight={setHighlight}
+      {mode === "name" ? (
+        <div className="grid min-h-[520px] gap-4 md:grid-cols-2 md:items-stretch">
+          {/* Left pane: name-driven CardPicker. Same surface chrome as the
+              CardPreview so the two panes read as a matched pair. */}
+          <div className="flex min-h-0 flex-col gap-2 rounded-lg border border-border bg-surface p-4 shadow-sm">
+            <CardPicker
+              ref={namePickerRef}
+              onHighlight={setHighlight}
+              autoFocus
+            />
+            <p className="border-t border-border pt-2 font-mono text-[11px] text-fg-subtle">
+              Type a name {"\u00b7"} {"\u2191\u2193"} to choose {"\u00b7"} Tab
+              to Confirm
+            </p>
+            {error && (
+              <p role="alert" className="font-mono text-xs text-signal-danger">
+                {error}
+              </p>
+            )}
+          </div>
+
+          {/* Right pane: live preview + form. */}
+          <CardPreview
+            selection={highlight}
+            onConfirm={handleConfirm}
+            isSubmitting={addMutation.isPending}
             successFlashKey={flashCounter}
+          />
+        </div>
+      ) : (
+        <div className="flex flex-col gap-2">
+          <CollectorNumberInlineRow
+            onConfirm={handleConfirm}
+            isSubmitting={addMutation.isPending}
+            successFlashKey={flashCounter}
+            onSwitchToName={() => {
+              setMode("name");
+              // The picker mounts on the next render; defer the focus call.
+              window.setTimeout(() => namePickerRef.current?.focus(), 0);
+            }}
           />
           {error && (
             <p role="alert" className="font-mono text-xs text-signal-danger">
               {error}
             </p>
           )}
+          <p className="font-mono text-[11px] text-fg-subtle">
+            Type {"\u0023"} {"\u00b7"} {"\u23ce"} to look up {"\u00b7"} Tab to
+            Confirm {"\u00b7"} {"\u23ce"} again to add
+          </p>
         </div>
-
-        {/* Right pane: live preview + form */}
-        <CardPreview
-          selection={highlight}
-          onConfirm={handleConfirm}
-          isSubmitting={addMutation.isPending}
-          successFlashKey={flashCounter}
-        />
-      </div>
+      )}
     </section>
+  );
+}
+
+/**
+ * Add-card mode toggle. Mirrors the visual treatment of the Oracle · Printing
+ * toggle used in the Browse tab so the two segmented controls feel like one
+ * family.
+ */
+function AddCardModeToggle({
+  value,
+  onChange,
+}: {
+  value: AddMode;
+  onChange: (next: AddMode) => void;
+}) {
+  const options: Array<{ key: AddMode; label: string }> = [
+    { key: "name", label: "Name" },
+    { key: "collector", label: "Collector #" },
+  ];
+  return (
+    <div
+      role="radiogroup"
+      aria-label="Add card by"
+      className="inline-flex rounded border border-border bg-surface"
+    >
+      {options.map((opt) => {
+        const active = opt.key === value;
+        return (
+          <button
+            key={opt.key}
+            type="button"
+            role="radio"
+            aria-checked={active}
+            onClick={() => onChange(opt.key)}
+            className={[
+              "px-3 py-1 font-mono text-xs uppercase tracking-widest transition-colors",
+              active
+                ? "bg-accent text-accent-fg"
+                : "text-fg-subtle hover:text-fg",
+            ].join(" ")}
+          >
+            {opt.label}
+          </button>
+        );
+      })}
+    </div>
   );
 }
 
