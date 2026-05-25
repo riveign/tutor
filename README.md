@@ -4,7 +4,7 @@ The ultimate collection manager and deckbuilding companion for Magic: The Gather
 
 ## Status
 
-Phase 2 scaffold. Rust API + plain React web, Postgres in Docker, OpenAPI-driven typed client. See [`DECISIONS.md`](./DECISIONS.md) for the decision log.
+Phase 8 shipped. Collections + decks CRUD, card-browse, and a focused gameplay-first Add Card flow (split-pane picker + preview, collector-# rip-the-pack mode, smart defaults) are on `main`. CI runs Rust + SQLx integration tests against a real Postgres service. Next up is Phase 9a — applying the same Add Card UX patterns to the deck-entry flow. See [`ROADMAP.md`](./ROADMAP.md) for the phase ledger and [`DECISIONS.md`](./DECISIONS.md) for the decision log.
 
 ## Core ideas (the differentiators)
 
