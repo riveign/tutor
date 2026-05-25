@@ -14,6 +14,24 @@ jobs:
   rust:
     name: rust
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: tutor
+          POSTGRES_PASSWORD: tutor
+          POSTGRES_DB: tutor
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U tutor -d tutor"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+    env:
+      # Integration tests use `#[sqlx::test]` which connects to this
+      # base URL and provisions a fresh per-test database from it.
+      DATABASE_URL: postgres://tutor:tutor@localhost:5432/tutor
     defaults:
       run:
         working-directory: api
