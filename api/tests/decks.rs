@@ -173,11 +173,12 @@ async fn deck_entries_zone_routing_and_collapse(pool: PgPool) {
     assert_eq!(b["quantity"], 2);
 
     // 5) Verify there are exactly 2 rows for this deck (main + side).
-    let total: i64 = sqlx::query_scalar("SELECT count(*) FROM deck_entries WHERE deck_id = $1::uuid")
-        .bind(&deck_id)
-        .fetch_one(&pool)
-        .await
-        .unwrap();
+    let total: i64 =
+        sqlx::query_scalar("SELECT count(*) FROM deck_entries WHERE deck_id = $1::uuid")
+            .bind(&deck_id)
+            .fetch_one(&pool)
+            .await
+            .unwrap();
     assert_eq!(total, 2);
 
     // 6) PATCH quantity = 0 on main entry → 204 + row deleted.

@@ -29,7 +29,10 @@ fn state(pool: PgPool) -> State<AppState> {
 async fn list_sets_returns_newest_first(pool: PgPool) {
     seed(&pool).await;
 
-    let q = ListSetsQuery { q: None, limit: None };
+    let q = ListSetsQuery {
+        q: None,
+        limit: None,
+    };
     let Json(items): Json<Vec<SetSummary>> = list_sets(state(pool), Query(q)).await.unwrap();
 
     // Fixture has lea (1993) and neo (2022). Newest must come first.

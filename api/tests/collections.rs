@@ -180,7 +180,10 @@ async fn list_collections_and_validation_errors(pool: PgPool) {
     )
     .await;
     assert_eq!(status, StatusCode::BAD_REQUEST);
-    assert!(body["error"].as_str().unwrap().contains("must not be empty"));
+    assert!(body["error"]
+        .as_str()
+        .unwrap()
+        .contains("must not be empty"));
 
     // Create two, then list.
     let _ = send(

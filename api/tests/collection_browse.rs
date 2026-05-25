@@ -33,8 +33,7 @@ fn load_oracle() -> Vec<ScryfallCard> {
 }
 
 fn load_printings() -> Vec<ScryfallCard> {
-    serde_json::from_str(include_str!("fixtures/printings.json"))
-        .expect("printings fixture parses")
+    serde_json::from_str(include_str!("fixtures/printings.json")).expect("printings fixture parses")
 }
 
 async fn seed_catalog(pool: &PgPool) {
@@ -78,12 +77,11 @@ const BOSEIJU_ORACLE: Uuid = Uuid::from_u128(0xbbbbbbbb_bbbb_bbbb_bbbb_bbbbbbbbb
 ///   oracle grouping  → 2 rows (LB qty=4, Boseiju qty=1)
 ///   printing grouping → 4 rows
 async fn seed_collection_with_entries(pool: &PgPool) -> Uuid {
-    let collection_id: Uuid = sqlx::query_scalar(
-        "INSERT INTO collections (name) VALUES ('Test Pile') RETURNING id",
-    )
-    .fetch_one(pool)
-    .await
-    .unwrap();
+    let collection_id: Uuid =
+        sqlx::query_scalar("INSERT INTO collections (name) VALUES ('Test Pile') RETURNING id")
+            .fetch_one(pool)
+            .await
+            .unwrap();
 
     // LB lea nonfoil ×2
     sqlx::query(
@@ -137,10 +135,12 @@ async fn oracle_grouping_collapses_printings_and_sums_quantity(pool: PgPool) {
     seed_catalog(&pool).await;
     let cid = seed_collection_with_entries(&pool).await;
 
-    let Json(SearchResponse { items, total, .. }) =
-        search_cards(state(pool), Query(query_scoped(cid, Some(Grouping::Oracle))))
-            .await
-            .unwrap();
+    let Json(SearchResponse { items, total, .. }) = search_cards(
+        state(pool),
+        Query(query_scoped(cid, Some(Grouping::Oracle))),
+    )
+    .await
+    .unwrap();
 
     assert_eq!(total, 2, "two distinct oracle cards owned");
     assert_eq!(items.len(), 2);
@@ -260,8 +260,7 @@ async fn unscoped_search_keeps_legacy_shape(pool: PgPool) {
         page_size: None,
     };
 
-    let Json(SearchResponse { items, .. }) =
-        search_cards(state(pool), Query(q)).await.unwrap();
+    let Json(SearchResponse { items, .. }) = search_cards(state(pool), Query(q)).await.unwrap();
 
     assert!(!items.is_empty(), "fixture should return at least one card");
     for row in &items {

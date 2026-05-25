@@ -254,11 +254,7 @@ fn is_commander_format(format: Option<&str>) -> bool {
 /// Validate that an oracle_id refers to a Legendary Creature. Used for the
 /// commander and (for V1) the partner slot. We deliberately do NOT enforce the
 /// real Partner keyword here — that's a richer rules check for a later phase.
-async fn validate_legendary_creature(
-    pool: &PgPool,
-    oracle_id: Uuid,
-    role: &str,
-) -> ApiResult<()> {
+async fn validate_legendary_creature(pool: &PgPool, oracle_id: Uuid, role: &str) -> ApiResult<()> {
     let row = sqlx::query("SELECT type_line FROM cards WHERE oracle_id = $1")
         .bind(oracle_id)
         .fetch_optional(pool)
@@ -266,9 +262,7 @@ async fn validate_legendary_creature(
         .with_context(|| format!("looking up {role} oracle card"))?;
 
     let Some(row) = row else {
-        return Err(ApiError::validation(format!(
-            "{role}_oracle_id not found"
-        )));
+        return Err(ApiError::validation(format!("{role}_oracle_id not found")));
     };
 
     let type_line: String = row.get("type_line");
@@ -397,8 +391,7 @@ pub async fn create_deck(
     }
 
     let color_identity =
-        compute_color_identity(&state.db, body.commander_oracle_id, body.partner_oracle_id)
-            .await?;
+        compute_color_identity(&state.db, body.commander_oracle_id, body.partner_oracle_id).await?;
 
     let row = sqlx::query(
         r#"
@@ -682,14 +675,13 @@ pub async fn update_entry(
     // Delete-on-zero short-circuit (and reject negatives).
     if let Some(q) = body.quantity {
         if q == 0 {
-            let affected =
-                sqlx::query("DELETE FROM deck_entries WHERE deck_id = $1 AND id = $2")
-                    .bind(deck_id)
-                    .bind(entry_id)
-                    .execute(&state.db)
-                    .await
-                    .context("deleting deck entry on quantity=0")?
-                    .rows_affected();
+            let affected = sqlx::query("DELETE FROM deck_entries WHERE deck_id = $1 AND id = $2")
+                .bind(deck_id)
+                .bind(entry_id)
+                .execute(&state.db)
+                .await
+                .context("deleting deck entry on quantity=0")?
+                .rows_affected();
             if affected == 0 {
                 return Err(ApiError::NotFound);
             }
@@ -705,14 +697,13 @@ pub async fn update_entry(
     // Zone-collision check (best-effort before the UPDATE — we still rely on
     // the UNIQUE constraint as backstop, mapped to a 409).
     if let Some(new_zone) = body.zone {
-        let current = sqlx::query(
-            "SELECT oracle_id, zone FROM deck_entries WHERE deck_id = $1 AND id = $2",
-        )
-        .bind(deck_id)
-        .bind(entry_id)
-        .fetch_optional(&state.db)
-        .await
-        .context("loading deck entry for zone-collision check")?;
+        let current =
+            sqlx::query("SELECT oracle_id, zone FROM deck_entries WHERE deck_id = $1 AND id = $2")
+                .bind(deck_id)
+                .bind(entry_id)
+                .fetch_optional(&state.db)
+                .await
+                .context("loading deck entry for zone-collision check")?;
         let Some(current) = current else {
             return Err(ApiError::NotFound);
         };
