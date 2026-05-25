@@ -1,6 +1,6 @@
 /**
  * CardPreview — right-pane companion to `CardPicker` for the Phase 8c
- * split-pane add-to-collection flow.
+ * split-pane add-to-collection flow (refined in Phase 8i).
  *
  * Responsibilities:
  *   * Given a `selection` (the picker's currently highlighted oracle), fetch
@@ -10,9 +10,11 @@
  *   * Show the printing's image (lazy-loaded as soon as the card is
  *     highlighted, so the user sees the art before they hit Confirm), name,
  *     mana cost, type line, oracle text, set + collector #.
- *   * Own the per-entry form fields (qty / finish / condition, plus a
+ *   * Own the per-entry form fields (qty only in the visible form, plus a
  *     "More details" disclosure for language / acquired_at / acquired_from /
- *     notes) and emit `onConfirm` with a complete payload.
+ *     notes) and emit `onConfirm` with a complete payload. Finish +
+ *     condition are sent as silent defaults (`nonfoil`/`near_mint`) — the
+ *     product is gameplay/deckbuilding-focused, not collector-grade.
  *   * After a successful add the parent bumps `successFlashKey`; we briefly
  *     show a "Added" indicator and reset the form to defaults BUT keep the
  *     selection populated so repeat-adds of the same card are one click.
@@ -31,14 +33,12 @@ import { useQuery } from "@tanstack/react-query";
 
 import type { CardPickerHighlight } from "@/components/CardPicker";
 import { api, type CardDetail } from "@/lib/api/client";
-import {
-  CONDITIONS,
-  FINISHES,
-  type CardCondition,
-  type CardFinish,
-  type CreateEntryBody,
+import type {
+  CardCondition,
+  CardFinish,
+  CreateEntryBody,
 } from "@/lib/api/collections";
-import { pickDefaultFinish, pickDefaultPrinting } from "@/lib/cardDefaults";
+import { pickDefaultPrinting } from "@/lib/cardDefaults";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -67,19 +67,6 @@ function isImageUris(value: unknown): value is ScryfallImageUris {
 function pickImageUrl(imageUris: unknown): string | null {
   if (!isImageUris(imageUris)) return null;
   return imageUris.normal ?? imageUris.large ?? imageUris.small ?? null;
-}
-
-const KNOWN_FINISHES: readonly CardFinish[] = FINISHES;
-function isCardFinish(value: string): value is CardFinish {
-  return (KNOWN_FINISHES as readonly string[]).includes(value);
-}
-
-function narrowFinishes(finishes: readonly string[]): CardFinish[] {
-  return finishes.filter(isCardFinish);
-}
-
-function isCardCondition(value: string): value is CardCondition {
-  return (CONDITIONS as readonly string[]).includes(value);
 }
 
 /**
@@ -229,32 +216,23 @@ export function CardPreview({
     return defaultPrinting;
   }, [filteredPrintings, printingIdOverride, defaultPrinting]);
 
-  const availableFinishes = useMemo(
-    () => narrowFinishes(activePrinting?.finishes ?? []),
-    [activePrinting?.finishes],
-  );
-
   // -------------------------------------------------------------------------
   // Form state
+  //
+  // Finish and Condition are intentionally NOT user-editable in Phase 8i —
+  // the product is gameplay/deckbuilding-focused, not collector-grade. We
+  // still send the API-required defaults (`nonfoil` / `near_mint`) so the
+  // schema (which uniquely keys on
+  // (collection_id, printing_id, finish, language, condition)) is happy and
+  // a future re-introduction of the controls is a pure UI change.
   // -------------------------------------------------------------------------
   const [quantity, setQuantity] = useState(1);
-  const [finish, setFinish] = useState<CardFinish>("nonfoil");
   const [language, setLanguage] = useState("en");
-  const [condition, setCondition] = useState<CardCondition>("near_mint");
   const [acquiredAt, setAcquiredAt] = useState("");
   const [acquiredFrom, setAcquiredFrom] = useState("");
   const [notes, setNotes] = useState("");
   const [moreOpen, setMoreOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
-
-  // Whenever the active printing changes, snap the finish back to the
-  // smart default for that printing's available finishes. We intentionally
-  // do NOT reset quantity/condition/notes on a printing swap — only on
-  // confirm or on selection change.
-  useEffect(() => {
-    if (availableFinishes.length === 0) return;
-    setFinish(pickDefaultFinish(availableFinishes));
-  }, [availableFinishes]);
 
   // -------------------------------------------------------------------------
   // After confirm: parent bumps successFlashKey. Reset form to defaults but
@@ -267,23 +245,17 @@ export function CardPreview({
     if (successFlashKey === undefined) return;
     if (successFlashKey === lastFlashRef.current) return;
     lastFlashRef.current = successFlashKey;
-    // Reset form fields to defaults (re-resolving finish for the active
-    // printing).
     setQuantity(1);
     setLanguage("en");
-    setCondition("near_mint");
     setAcquiredAt("");
     setAcquiredFrom("");
     setNotes("");
     setMoreOpen(false);
     setError(null);
-    if (availableFinishes.length > 0) {
-      setFinish(pickDefaultFinish(availableFinishes));
-    }
     setFlashing(true);
     const t = window.setTimeout(() => setFlashing(false), 1500);
     return () => window.clearTimeout(t);
-  }, [successFlashKey, availableFinishes]);
+  }, [successFlashKey]);
 
   // -------------------------------------------------------------------------
   // Submit
@@ -299,13 +271,16 @@ export function CardPreview({
       return;
     }
     setError(null);
+    // Silent defaults: see "Form state" block above for the rationale.
+    const finishDefault: CardFinish = "nonfoil";
+    const conditionDefault: CardCondition = "near_mint";
     onConfirm({
       printing_id: activePrinting.id,
       oracle_id: selection.oracle_id,
       quantity,
-      finish,
+      finish: finishDefault,
       language: language.trim() || "en",
-      condition,
+      condition: conditionDefault,
       acquired_at: acquiredAt || null,
       acquired_from: acquiredFrom.trim() || null,
       notes: notes.trim() || null,
@@ -408,35 +383,13 @@ export function CardPreview({
             you're cataloguing it". */}
         <hr className="border-t border-border" aria-hidden="true" />
 
-        {/* Form row: finish / quantity / condition. Each cell carries
-            `min-w-0` and each input is `w-full` so the column track —
-            not the input's intrinsic width — drives the layout. */}
+        {/* Form row: quantity only. Finish + Condition are silent defaults
+            (see "Form state" block in the component body). The single-cell
+            grid is preserved so the More-details disclosure below sits in
+            the same column track. */}
         <div className="flex min-w-0 flex-col gap-5">
           <div className="grid gap-x-4 gap-y-3 sm:grid-cols-3">
-            <label className="grid min-w-0 gap-1">
-              <span className="font-mono text-xs uppercase tracking-widest text-fg-subtle">
-                Finish
-              </span>
-              <select
-                value={finish}
-                onChange={(e) => {
-                  const v = e.target.value;
-                  if (isCardFinish(v)) setFinish(v);
-                }}
-                disabled={!activePrinting}
-                className="w-full min-w-0 rounded border border-border bg-surface px-3 py-2 text-sm text-fg focus:border-border-strong focus:outline-none focus:ring-2 focus:ring-accent"
-              >
-                {(availableFinishes.length > 0 ? availableFinishes : KNOWN_FINISHES).map(
-                  (f) => (
-                    <option key={f} value={f}>
-                      {f}
-                    </option>
-                  ),
-                )}
-              </select>
-            </label>
-
-            <label className="grid min-w-0 gap-1">
+            <label className="grid min-w-0 gap-1 sm:col-span-1">
               <span className="font-mono text-xs uppercase tracking-widest text-fg-subtle">
                 Quantity
               </span>
@@ -447,26 +400,6 @@ export function CardPreview({
                 onChange={(e) => setQuantity(Number(e.target.value))}
                 className="w-full min-w-0 rounded border border-border bg-surface px-3 py-2 text-sm text-fg focus:border-border-strong focus:outline-none focus:ring-2 focus:ring-accent"
               />
-            </label>
-
-            <label className="grid min-w-0 gap-1">
-              <span className="font-mono text-xs uppercase tracking-widest text-fg-subtle">
-                Condition
-              </span>
-              <select
-                value={condition}
-                onChange={(e) => {
-                  const v = e.target.value;
-                  if (isCardCondition(v)) setCondition(v);
-                }}
-                className="w-full min-w-0 rounded border border-border bg-surface px-3 py-2 text-sm text-fg focus:border-border-strong focus:outline-none focus:ring-2 focus:ring-accent"
-              >
-                {CONDITIONS.map((c) => (
-                  <option key={c} value={c}>
-                    {c}
-                  </option>
-                ))}
-              </select>
             </label>
           </div>
 

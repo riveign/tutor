@@ -2,26 +2,13 @@
  * Pure helpers for choosing sensible defaults when previewing / committing
  * a card entry. Kept in its own module so the unit tests don't drag in any
  * React surface, and so component files stay Fast-Refresh-friendly.
- */
-import type { CardFinish } from "@/lib/api/collections";
-
-/**
- * Smart default finish for a newly highlighted printing.
  *
- *   * Prefer `nonfoil` — by far the most common.
- *   * Otherwise prefer `foil` — covers foil-only promos.
- *   * Otherwise fall back to the first available finish.
- *   * Empty input returns `nonfoil` as a last-resort default so callers
- *     always have something to render; this shouldn't happen for real
- *     printings ingested from Scryfall.
+ * `pickDefaultFinish` lived here until Phase 8i, when the Finish UI was
+ * dropped from the add form (the product is gameplay/deckbuilding-focused,
+ * not collector-grade). Both call-sites now hard-code `"nonfoil"` as the
+ * silent default sent to the API. If/when collector-grade tracking returns,
+ * the helper can be revived from git history.
  */
-export function pickDefaultFinish(available: readonly CardFinish[]): CardFinish {
-  if (available.includes("nonfoil")) return "nonfoil";
-  if (available.includes("foil")) return "foil";
-  const first = available[0];
-  if (first) return first;
-  return "nonfoil";
-}
 
 /**
  * Smart default printing for a newly highlighted oracle card.

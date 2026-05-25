@@ -1,14 +1,17 @@
 /**
  * CollectorNumberInlineRow — a single horizontal "rip the pack" add row
- * (Phase 8g). Replaces the previous Collector # split-pane.
+ * (Phase 8g, refined in 8i). Replaces the previous Collector # split-pane.
  *
  * Layout target:
  *
- *   [Set picker] [# input]  [thumb 100px]  [name + mana]  [Finish] [Qty] [Cond]  [Confirm]
+ *   [Set chip] [# stacked] [thumb + name + mana] [Qty stacked] [More] [Confirm]
  *
  * Rationale: when ripping a sealed pool the user types set+#+Enter, eyeballs
- * the small thumb to confirm it's the right card, and hits Enter again on
- * Confirm. Everything stays in one row so nothing scrolls off-screen.
+ * the small thumb to confirm it's the right card, sets Qty for the playset
+ * count, and hits Enter again on Confirm. Everything stays in one row so
+ * nothing scrolls off-screen. Finish and Condition are deferred until we
+ * actually ship collector-grade tracking — for the gameplay/deckbuilding
+ * audience they were noise.
  *
  * Behaviour:
  *   * Set is sticky across adds (set the bag, type many numbers).
@@ -20,9 +23,10 @@
  *   * Variant collision: dropdown listing every match, rendered above the
  *     row so the primary form line stays the rhythm anchor.
  *
- * This component owns its own form state + lookup + smart defaults; it emits
- * `onConfirm(CardPreviewConfirmPayload)` so the parent's existing mutation
- * handler is unchanged.
+ * This component owns its own form state + lookup; it emits
+ * `onConfirm(CardPreviewConfirmPayload)` with `finish: "nonfoil"` +
+ * `condition: "near_mint"` defaults so the parent's existing mutation handler
+ * is unchanged.
  */
 
 import {
@@ -44,17 +48,7 @@ import {
   type CardSummary,
   type SetSummary,
 } from "@/lib/api/client";
-import {
-  CONDITIONS,
-  FINISHES,
-  type CardCondition,
-  type CardFinish,
-} from "@/lib/api/collections";
-import {
-  normalizeCollectorNumber,
-  pickDefaultFinish,
-  pickDefaultPrinting,
-} from "@/lib/cardDefaults";
+import { normalizeCollectorNumber, pickDefaultPrinting } from "@/lib/cardDefaults";
 
 const LOOKUP_LIMIT = 10;
 
@@ -81,17 +75,6 @@ function isImageUris(value: unknown): value is ScryfallImageUris {
 function pickImageUrl(imageUris: unknown): string | null {
   if (!isImageUris(imageUris)) return null;
   return imageUris.small ?? imageUris.normal ?? imageUris.large ?? null;
-}
-
-const KNOWN_FINISHES: readonly CardFinish[] = FINISHES;
-function isCardFinish(value: string): value is CardFinish {
-  return (KNOWN_FINISHES as readonly string[]).includes(value);
-}
-function narrowFinishes(finishes: readonly string[]): CardFinish[] {
-  return finishes.filter(isCardFinish);
-}
-function isCardCondition(value: string): value is CardCondition {
-  return (CONDITIONS as readonly string[]).includes(value);
 }
 
 // ---------------------------------------------------------------------------
@@ -225,27 +208,19 @@ export function CollectorNumberInlineRow({
     return setPrintings.find((p) => p.id === picked.id) ?? null;
   }, [detailQuery.data, selectedSet, normalized]);
 
-  const availableFinishes = useMemo(
-    () => narrowFinishes(activePrinting?.finishes ?? []),
-    [activePrinting?.finishes],
-  );
-
   // -------------------- form state --------------------
+  // Finish and Condition are intentionally NOT user-editable in Phase 8i —
+  // the product is gameplay/deckbuilding-focused, not collector-grade. We
+  // still send the API-required defaults so the schema (which uniquely keys
+  // on (collection_id, printing_id, finish, language, condition)) is happy
+  // and so a future re-introduction of the controls is a pure UI change.
   const [quantity, setQuantity] = useState(1);
-  const [finish, setFinish] = useState<CardFinish>("nonfoil");
   const [language, setLanguage] = useState("en");
-  const [condition, setCondition] = useState<CardCondition>("near_mint");
   const [acquiredAt, setAcquiredAt] = useState("");
   const [acquiredFrom, setAcquiredFrom] = useState("");
   const [notes, setNotes] = useState("");
   const [moreOpen, setMoreOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
-
-  // Snap finish to the smart default whenever the printing changes.
-  useEffect(() => {
-    if (availableFinishes.length === 0) return;
-    setFinish(pickDefaultFinish(availableFinishes));
-  }, [availableFinishes]);
 
   // -------------------- reset on successful add --------------------
   const resetForNextAdd = useCallback(() => {
@@ -254,7 +229,6 @@ export function CollectorNumberInlineRow({
     setVariantPick(null);
     setQuantity(1);
     setLanguage("en");
-    setCondition("near_mint");
     setAcquiredAt("");
     setAcquiredFrom("");
     setNotes("");
@@ -302,9 +276,10 @@ export function CollectorNumberInlineRow({
       printing_id: activePrinting.id,
       oracle_id: activeOracle.oracle_id,
       quantity,
-      finish,
+      // Silent defaults — see "form state" block for the rationale.
+      finish: "nonfoil",
       language: language.trim() || "en",
-      condition,
+      condition: "near_mint",
       acquired_at: acquiredAt || null,
       acquired_from: acquiredFrom.trim() || null,
       notes: notes.trim() || null,
@@ -340,7 +315,7 @@ export function CollectorNumberInlineRow({
     <form
       onSubmit={handleSubmit}
       aria-live="polite"
-      className="flex flex-col gap-3 rounded-md border border-border bg-surface p-4 shadow-sm"
+      className="flex flex-col gap-4 rounded-md border border-border bg-surface p-4 shadow-sm"
     >
       {/* Variant chooser surfaces above the main row when collector # matches
           multiple oracles — rare but real for split / DFC printings. */}
@@ -353,18 +328,30 @@ export function CollectorNumberInlineRow({
         />
       )}
 
-      {/* Main horizontal row. At ≥lg (1024px) it stays on a single line;
-          below that the cluster wraps so labels never collide with the
-          identity cell. */}
-      <div className="flex flex-wrap items-center gap-3 lg:flex-nowrap">
-        {/* Set chip (compact). */}
+      {/* Main horizontal row.
+          *
+          *   Alignment contract:
+          *     - All cells use `items-end` so the input baselines (the bottom
+          *       edge of each visible input box) sit on the same line.
+          *     - Every input is `h-9` so the row has a single consistent
+          *       control height — the thumb + name block self-centers inside
+          *       its larger fixed slot.
+          *     - The thumb slot is fixed-aspect 5:7 and never participates in
+          *       label rhythm — its column simply expands to fill remaining
+          *       width.
+          *     - At ≥lg (1024px) the row stays on a single line; below that
+          *       cells wrap and re-balance via the consistent `gap-4`.
+          */}
+      <div className="flex flex-wrap items-end gap-4 lg:flex-nowrap">
+        {/* Set chip — stacked so its visual rhythm matches the # / Qty
+            inputs (label above, control below). */}
         <SetChip
           set={selectedSet}
           onChange={() => setSelectedSet(null)}
         />
 
-        {/* Collector # input. */}
-        <label className="flex items-center gap-2">
+        {/* Collector # input — stacked label matches Qty for column rhythm. */}
+        <label className="flex shrink-0 flex-col gap-0.5">
           <span className="font-mono text-[10px] uppercase tracking-widest text-fg-subtle">
             #
           </span>
@@ -380,7 +367,7 @@ export function CollectorNumberInlineRow({
             aria-describedby={notFound ? "cn-inline-error" : undefined}
             placeholder="161"
             className={[
-              "w-20 rounded border bg-surface px-2 py-1.5 text-sm text-fg placeholder:text-fg-subtle focus:outline-none focus:ring-2 focus:ring-accent",
+              "h-9 w-20 rounded border bg-surface px-2 text-sm text-fg placeholder:text-fg-subtle focus:outline-none focus:ring-2 focus:ring-accent",
               notFound ? "border-signal-danger" : "border-border",
             ].join(" ")}
           />
@@ -402,53 +389,58 @@ export function CollectorNumberInlineRow({
           notFound={notFound}
         />
 
-        {/* Form cluster: Finish · Qty · Condition. */}
-        <FormCluster
-          finish={finish}
-          onFinishChange={setFinish}
-          availableFinishes={availableFinishes}
-          quantity={quantity}
-          onQuantityChange={setQuantity}
-          condition={condition}
-          onConditionChange={setCondition}
-          disabled={!activePrinting}
-        />
+        {/* Qty — the one remaining gameplay-relevant numeric. Stacked label
+            keeps the column rhythm consistent with # input. */}
+        <label className="flex shrink-0 flex-col gap-0.5">
+          <span className="font-mono text-[10px] uppercase tracking-widest text-fg-subtle">
+            Qty
+          </span>
+          <input
+            type="number"
+            min={1}
+            value={quantity}
+            onChange={(e) => setQuantity(Number(e.target.value))}
+            disabled={!activePrinting}
+            aria-label="Quantity"
+            className="h-9 w-16 rounded border border-border bg-surface px-2 text-sm text-fg focus:outline-none focus:ring-2 focus:ring-accent disabled:opacity-50"
+          />
+        </label>
 
-        {/* Confirm — pinned to the right edge. */}
+        {/* More toggle — pinned to the right cluster; participates in the
+            same `items-end` baseline so it sits at the input bottom. */}
+        <button
+          type="button"
+          onClick={() => setMoreOpen((v) => !v)}
+          aria-expanded={moreOpen}
+          className="ml-auto flex h-9 shrink-0 items-center font-mono text-[10px] uppercase tracking-widest text-fg-subtle transition hover:text-fg"
+        >
+          {moreOpen ? "\u25be Less" : "\u25be More"}
+        </button>
+
+        {/* Confirm — equal height (h-9) so it baselines with every input. */}
         <button
           type="submit"
           disabled={confirmDisabled}
-          className="ml-auto shrink-0 rounded bg-accent px-4 py-2 font-mono text-xs uppercase tracking-widest text-accent-fg shadow-sm transition hover:bg-accent/90 focus:outline-none focus:ring-2 focus:ring-accent focus:ring-offset-2 focus:ring-offset-surface disabled:cursor-not-allowed disabled:opacity-50"
+          className="flex h-9 shrink-0 items-center rounded bg-accent px-4 font-mono text-xs uppercase tracking-widest text-accent-fg shadow-sm transition hover:bg-accent/90 focus:outline-none focus:ring-2 focus:ring-accent focus:ring-offset-2 focus:ring-offset-surface disabled:cursor-not-allowed disabled:opacity-50"
         >
           {isSubmitting ? "Adding\u2026" : "Confirm \u23ce"}
         </button>
       </div>
 
-      {/* Secondary "More" disclosure — single thin row, never pushes Confirm
-          off the visible area because it lives BELOW it. */}
-      <div className="flex flex-col gap-2">
-        <button
-          type="button"
-          onClick={() => setMoreOpen((v) => !v)}
-          aria-expanded={moreOpen}
-          className="self-start font-mono text-[10px] uppercase tracking-widest text-fg-subtle transition hover:text-fg"
-        >
-          {moreOpen ? "\u25be Less" : "\u25be More"}
-        </button>
-
-        {moreOpen && (
-          <MoreFields
-            language={language}
-            onLanguageChange={setLanguage}
-            acquiredAt={acquiredAt}
-            onAcquiredAtChange={setAcquiredAt}
-            acquiredFrom={acquiredFrom}
-            onAcquiredFromChange={setAcquiredFrom}
-            notes={notes}
-            onNotesChange={setNotes}
-          />
-        )}
-      </div>
+      {/* Secondary "More" disclosure — lives BELOW the main row so it never
+          pushes Confirm off-screen. */}
+      {moreOpen && (
+        <MoreFields
+          language={language}
+          onLanguageChange={setLanguage}
+          acquiredAt={acquiredAt}
+          onAcquiredAtChange={setAcquiredAt}
+          acquiredFrom={acquiredFrom}
+          onAcquiredFromChange={setAcquiredFrom}
+          notes={notes}
+          onNotesChange={setNotes}
+        />
+      )}
 
       {/* Status line — errors / lookup failures / not-found escape hatch. */}
       <div aria-live="polite" className="flex min-h-[1.25rem] flex-col gap-1">
@@ -494,6 +486,11 @@ export function CollectorNumberInlineRow({
 // Sub-components
 // ---------------------------------------------------------------------------
 
+/**
+ * "Set" cell — stacked (label above, chip below) so it shares the same
+ * vertical rhythm as the # and Qty input cells. The chip's visible body is
+ * `h-9` so it baselines with every other control in the row.
+ */
 function SetChip({
   set,
   onChange,
@@ -502,18 +499,23 @@ function SetChip({
   onChange: () => void;
 }) {
   return (
-    <div className="flex shrink-0 items-baseline gap-2 rounded border border-border bg-surface-sunken px-2.5 py-1.5">
-      <span className="font-mono text-xs uppercase tracking-widest text-fg">
-        {set.code}
+    <div className="flex shrink-0 flex-col gap-0.5">
+      <span className="font-mono text-[10px] uppercase tracking-widest text-fg-subtle">
+        Set
       </span>
-      <button
-        type="button"
-        onClick={onChange}
-        aria-label={`Change set (currently ${set.name})`}
-        className="font-mono text-[10px] uppercase tracking-widest text-fg-subtle hover:text-fg"
-      >
-        change
-      </button>
+      <div className="flex h-9 items-center gap-2 rounded border border-border bg-surface-sunken px-2.5">
+        <span className="font-mono text-xs uppercase tracking-widest text-fg">
+          {set.code}
+        </span>
+        <button
+          type="button"
+          onClick={onChange}
+          aria-label={`Change set (currently ${set.name})`}
+          className="font-mono text-[10px] uppercase tracking-widest text-fg-subtle hover:text-fg"
+        >
+          change
+        </button>
+      </div>
     </div>
   );
 }
@@ -674,96 +676,6 @@ function CardBackPlaceholderSmall({
           ? `${setCode.toUpperCase()} \u00b7 #${collectorNumber}`
           : "\u2014"}
       </span>
-    </div>
-  );
-}
-
-/**
- * Finish / Qty / Condition cluster. Labels are visually-hidden (sr-only)
- * because the row is read left-to-right as a single semantic unit — the
- * surrounding context ("Add card · Collector #") is the heading.
- */
-function FormCluster({
-  finish,
-  onFinishChange,
-  availableFinishes,
-  quantity,
-  onQuantityChange,
-  condition,
-  onConditionChange,
-  disabled,
-}: {
-  finish: CardFinish;
-  onFinishChange: (f: CardFinish) => void;
-  availableFinishes: CardFinish[];
-  quantity: number;
-  onQuantityChange: (q: number) => void;
-  condition: CardCondition;
-  onConditionChange: (c: CardCondition) => void;
-  disabled: boolean;
-}) {
-  const finishes =
-    availableFinishes.length > 0 ? availableFinishes : KNOWN_FINISHES;
-  return (
-    <div className="flex shrink-0 items-center gap-2">
-      <label className="flex flex-col gap-0.5">
-        <span className="font-mono text-[10px] uppercase tracking-widest text-fg-subtle">
-          Finish
-        </span>
-        <select
-          value={finish}
-          onChange={(e) => {
-            const v = e.target.value;
-            if (isCardFinish(v)) onFinishChange(v);
-          }}
-          disabled={disabled}
-          aria-label="Finish"
-          className="rounded border border-border bg-surface px-2 py-1 text-sm text-fg focus:outline-none focus:ring-2 focus:ring-accent disabled:opacity-50"
-        >
-          {finishes.map((f) => (
-            <option key={f} value={f}>
-              {f}
-            </option>
-          ))}
-        </select>
-      </label>
-
-      <label className="flex flex-col gap-0.5">
-        <span className="font-mono text-[10px] uppercase tracking-widest text-fg-subtle">
-          Qty
-        </span>
-        <input
-          type="number"
-          min={1}
-          value={quantity}
-          onChange={(e) => onQuantityChange(Number(e.target.value))}
-          disabled={disabled}
-          aria-label="Quantity"
-          className="w-16 rounded border border-border bg-surface px-2 py-1 text-sm text-fg focus:outline-none focus:ring-2 focus:ring-accent disabled:opacity-50"
-        />
-      </label>
-
-      <label className="flex flex-col gap-0.5">
-        <span className="font-mono text-[10px] uppercase tracking-widest text-fg-subtle">
-          Cond
-        </span>
-        <select
-          value={condition}
-          onChange={(e) => {
-            const v = e.target.value;
-            if (isCardCondition(v)) onConditionChange(v);
-          }}
-          disabled={disabled}
-          aria-label="Condition"
-          className="rounded border border-border bg-surface px-2 py-1 text-sm text-fg focus:outline-none focus:ring-2 focus:ring-accent disabled:opacity-50"
-        >
-          {CONDITIONS.map((c) => (
-            <option key={c} value={c}>
-              {c}
-            </option>
-          ))}
-        </select>
-      </label>
     </div>
   );
 }
