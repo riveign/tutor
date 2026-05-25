@@ -79,29 +79,50 @@ export const AddCardLeftPane = forwardRef<
     <div className="flex h-full min-h-0 flex-col gap-3">
       <ModeToggle value={mode} onChange={setMode} />
 
-      {mode === "name" && (
-        <CardPicker
-          ref={namePickerRef}
-          onHighlight={onHighlight}
-          autoFocus
-        />
-      )}
+      {/* Mode bodies own the remaining vertical space so the helper text
+          stays anchored just below them with no dead area in between. */}
+      <div className="flex min-h-0 flex-1 flex-col">
+        {mode === "name" && (
+          <CardPicker
+            ref={namePickerRef}
+            onHighlight={onHighlight}
+            autoFocus
+          />
+        )}
 
-      {mode === "collector" && (
-        <CollectorNumberPicker
-          ref={collectorPickerRef}
-          onHighlight={onHighlight}
-          onSwitchToName={switchToName}
-          successFlashKey={successFlashKey}
-        />
-      )}
+        {mode === "collector" && (
+          <CollectorNumberPicker
+            ref={collectorPickerRef}
+            onHighlight={onHighlight}
+            onSwitchToName={switchToName}
+            successFlashKey={successFlashKey}
+          />
+        )}
+      </div>
 
-      <p className="font-mono text-xs text-fg-subtle">
-        Type to search · ↑↓ to choose · Tab to Confirm
-      </p>
+      <ModeHelper mode={mode} />
     </div>
   );
 });
+
+// ---------------------------------------------------------------------------
+// Mode-aware bottom helper hint.
+// ---------------------------------------------------------------------------
+
+function ModeHelper({ mode }: { mode: Mode }) {
+  // Centralised so the Name vs Collector keyboard models are documented in
+  // exactly one place. The text is referenced by no test fixtures — feel
+  // free to tune the wording.
+  const text =
+    mode === "name"
+      ? "Type a name · \u2191\u2193 to choose · Tab to Confirm"
+      : "Type a number · \u23ce to look up · Tab to Confirm";
+  return (
+    <p className="border-t border-border pt-3 font-mono text-xs text-fg-subtle">
+      {text}
+    </p>
+  );
+}
 
 // ---------------------------------------------------------------------------
 // Mode toggle — segmented control matching the Oracle · Printing toggle.

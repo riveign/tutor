@@ -303,12 +303,17 @@ export function CardPreview({
       <PreviewShell>
         <div
           aria-live="polite"
-          className="flex h-full flex-col items-center justify-center gap-3 text-fg-subtle"
+          className="flex h-full flex-col items-center justify-center gap-4 text-fg-subtle"
         >
           <SearchIcon />
-          <p className="font-mono text-xs uppercase tracking-widest">
-            Search for a card to preview
-          </p>
+          <div className="flex flex-col items-center gap-1 text-center">
+            <p className="font-mono text-xs uppercase tracking-widest">
+              No card selected
+            </p>
+            <p className="max-w-[28ch] text-sm text-fg-muted">
+              Search by name or set + collector number to preview a card here.
+            </p>
+          </div>
         </div>
       </PreviewShell>
     );
@@ -324,207 +329,227 @@ export function CardPreview({
     <PreviewShell>
       <form
         onSubmit={handleSubmit}
-        className="grid h-full gap-5 sm:grid-cols-[1fr_auto]"
+        className="flex h-full flex-col gap-5"
         aria-live="polite"
       >
-        {/* Left column: textual identity + form fields */}
-        <div className="flex min-w-0 flex-col gap-4">
-        {/* Identity */}
-        <div className="flex flex-col gap-1">
-          <div className="flex items-baseline justify-between gap-3">
-            <h3 className="font-serif text-lg text-fg">{selection.name}</h3>
-            <span className="font-mono text-xs text-fg-subtle">
-              {detail?.mana_cost ?? selection.mana_cost ?? ""}
-            </span>
+        {/* Top: identity row — image left, text identity right. Image is a
+            small thumbnail (120px) so the form below gets the full pane
+            width and the three select/input cells never collide. */}
+        <div className="flex min-w-0 gap-4">
+          {/* Image / placeholder thumbnail. */}
+          <div className="shrink-0">
+            {imageUrl ? (
+              <img
+                src={imageUrl}
+                alt={`${selection.name} card art`}
+                loading="lazy"
+                className="h-auto w-[120px] rounded-lg border border-border bg-surface object-contain shadow-sm"
+              />
+            ) : (
+              <CardBackPlaceholder
+                isLoading={detailQuery.isPending}
+                setCode={activePrinting?.set_code}
+                collectorNumber={activePrinting?.collector_number}
+                name={selection.name}
+              />
+            )}
           </div>
-          <p className="font-mono text-xs text-fg-subtle">
-            {detail?.type_line ?? selection.type_line}
-          </p>
-          {detail?.oracle_text && (
-            <p className="whitespace-pre-wrap text-sm text-fg-muted">
-              {detail.oracle_text}
-            </p>
-          )}
-        </div>
 
-        {/* Printing identity + (optional) chooser */}
-        <PrintingIdentity
-          printings={filteredPrintings}
-          active={activePrinting}
-          onChange={setPrintingIdOverride}
-        />
-
-        {/* Form row: finish / quantity / condition */}
-        <div className="grid gap-3 sm:grid-cols-3">
-          <label className="grid gap-1">
-            <span className="font-mono text-xs uppercase tracking-widest text-fg-subtle">
-              Finish
-            </span>
-            <select
-              value={finish}
-              onChange={(e) => {
-                const v = e.target.value;
-                if (isCardFinish(v)) setFinish(v);
-              }}
-              disabled={!activePrinting}
-              className="rounded border border-border bg-surface px-3 py-2 text-fg focus:outline-none focus:ring-2 focus:ring-accent"
-            >
-              {(availableFinishes.length > 0 ? availableFinishes : KNOWN_FINISHES).map(
-                (f) => (
-                  <option key={f} value={f}>
-                    {f}
-                  </option>
-                ),
-              )}
-            </select>
-          </label>
-
-          <label className="grid gap-1">
-            <span className="font-mono text-xs uppercase tracking-widest text-fg-subtle">
-              Quantity
-            </span>
-            <input
-              type="number"
-              min={1}
-              value={quantity}
-              onChange={(e) => setQuantity(Number(e.target.value))}
-              className="rounded border border-border bg-surface px-3 py-2 text-fg focus:outline-none focus:ring-2 focus:ring-accent"
-            />
-          </label>
-
-          <label className="grid gap-1">
-            <span className="font-mono text-xs uppercase tracking-widest text-fg-subtle">
-              Condition
-            </span>
-            <select
-              value={condition}
-              onChange={(e) => {
-                const v = e.target.value;
-                if (isCardCondition(v)) setCondition(v);
-              }}
-              className="rounded border border-border bg-surface px-3 py-2 text-fg focus:outline-none focus:ring-2 focus:ring-accent"
-            >
-              {CONDITIONS.map((c) => (
-                <option key={c} value={c}>
-                  {c}
-                </option>
-              ))}
-            </select>
-          </label>
-        </div>
-
-        {/* More details disclosure */}
-        <details
-          open={moreOpen}
-          onToggle={(e) => setMoreOpen(e.currentTarget.open)}
-          className="rounded border border-border bg-surface px-3 py-2"
-        >
-          <summary className="cursor-pointer select-none font-mono text-xs uppercase tracking-widest text-fg-subtle">
-            More details
-          </summary>
-          <div className="mt-3 grid gap-3 sm:grid-cols-2">
-            <label className="grid gap-1">
-              <span className="font-mono text-xs uppercase tracking-widest text-fg-subtle">
-                Language
+          {/* Identity text. `min-w-0` so the name truncation works inside
+              the flex container. */}
+          <div className="flex min-w-0 flex-1 flex-col gap-1.5">
+            <div className="flex min-w-0 items-baseline justify-between gap-3">
+              <h3 className="min-w-0 truncate font-serif text-xl leading-tight text-fg">
+                {selection.name}
+              </h3>
+              <span className="shrink-0 font-mono text-xs text-fg-subtle">
+                {detail?.mana_cost ?? selection.mana_cost ?? ""}
               </span>
-              <input
-                type="text"
-                value={language}
-                onChange={(e) => setLanguage(e.target.value)}
-                maxLength={8}
-                className="rounded border border-border bg-surface px-3 py-2 text-fg focus:outline-none focus:ring-2 focus:ring-accent"
-              />
-            </label>
-            <label className="grid gap-1">
-              <span className="font-mono text-xs uppercase tracking-widest text-fg-subtle">
-                Acquired at
-              </span>
-              <input
-                type="date"
-                value={acquiredAt}
-                onChange={(e) => setAcquiredAt(e.target.value)}
-                className="rounded border border-border bg-surface px-3 py-2 text-fg focus:outline-none focus:ring-2 focus:ring-accent"
-              />
-            </label>
-            <label className="grid gap-1">
-              <span className="font-mono text-xs uppercase tracking-widest text-fg-subtle">
-                Acquired from
-              </span>
-              <input
-                type="text"
-                value={acquiredFrom}
-                onChange={(e) => setAcquiredFrom(e.target.value)}
-                placeholder="LGS, prerelease, trade…"
-                className="rounded border border-border bg-surface px-3 py-2 text-fg focus:outline-none focus:ring-2 focus:ring-accent"
-              />
-            </label>
-            <label className="grid gap-1">
-              <span className="font-mono text-xs uppercase tracking-widest text-fg-subtle">
-                Notes
-              </span>
-              <input
-                type="text"
-                value={notes}
-                onChange={(e) => setNotes(e.target.value)}
-                className="rounded border border-border bg-surface px-3 py-2 text-fg focus:outline-none focus:ring-2 focus:ring-accent"
-              />
-            </label>
-          </div>
-        </details>
-
-        {/* Errors + success flash */}
-        {error && (
-          <p role="alert" className="font-mono text-xs text-signal-danger">
-            {error}
-          </p>
-        )}
-        {flashing && !error && (
-          <p
-            role="status"
-            aria-live="polite"
-            className="font-mono text-xs text-signal-success"
-          >
-            Added.
-          </p>
-        )}
-
-        {/* Confirm */}
-        <div className="mt-auto flex justify-end">
-          <button
-            type="submit"
-            disabled={
-              isSubmitting ||
-              !activePrinting ||
-              detailQuery.isPending ||
-              detailQuery.isError
-            }
-            className="rounded bg-accent px-5 py-2 font-mono text-xs uppercase tracking-widest text-accent-fg shadow-sm transition disabled:opacity-50"
-          >
-            {isSubmitting ? "Adding…" : "Confirm"}
-          </button>
-        </div>
-
-        {detailQuery.isError && (
-          <p role="alert" className="font-mono text-xs text-signal-danger">
-            Failed to load card detail: {detailQuery.error.message}
-          </p>
-        )}
-        </div>
-
-        {/* Right column: card image (capped width so the form keeps room) */}
-        <div className="flex sm:justify-end">
-          {imageUrl ? (
-            <img
-              src={imageUrl}
-              alt={`${selection.name} card art`}
-              loading="lazy"
-              className="h-auto w-full max-w-[200px] rounded-lg border border-border bg-surface object-contain shadow"
-            />
-          ) : (
-            <div className="flex h-[280px] w-[200px] items-center justify-center rounded-lg border border-border bg-surface font-mono text-xs text-fg-subtle">
-              {detailQuery.isPending ? "loading…" : "no image"}
             </div>
-          )}
+            <p className="font-mono text-xs uppercase tracking-widest text-fg-subtle">
+              {detail?.type_line ?? selection.type_line}
+            </p>
+            {detail?.oracle_text && (
+              <p className="mt-1 whitespace-pre-wrap text-sm leading-relaxed text-fg-muted">
+                {detail.oracle_text}
+              </p>
+            )}
+
+            {/* Printing identity sits with the rest of the identity text so
+                "what card / what printing" reads as one block. */}
+            <div className="mt-2">
+              <PrintingIdentity
+                printings={filteredPrintings}
+                active={activePrinting}
+                onChange={setPrintingIdOverride}
+              />
+            </div>
+          </div>
+        </div>
+
+        {/* Divider — visually separates "what you're adding" from "how
+            you're cataloguing it". */}
+        <hr className="border-t border-border" aria-hidden="true" />
+
+        {/* Form row: finish / quantity / condition. Each cell carries
+            `min-w-0` and each input is `w-full` so the column track —
+            not the input's intrinsic width — drives the layout. */}
+        <div className="flex min-w-0 flex-col gap-5">
+          <div className="grid gap-x-4 gap-y-3 sm:grid-cols-3">
+            <label className="grid min-w-0 gap-1">
+              <span className="font-mono text-xs uppercase tracking-widest text-fg-subtle">
+                Finish
+              </span>
+              <select
+                value={finish}
+                onChange={(e) => {
+                  const v = e.target.value;
+                  if (isCardFinish(v)) setFinish(v);
+                }}
+                disabled={!activePrinting}
+                className="w-full min-w-0 rounded border border-border bg-surface px-3 py-2 text-sm text-fg focus:border-border-strong focus:outline-none focus:ring-2 focus:ring-accent"
+              >
+                {(availableFinishes.length > 0 ? availableFinishes : KNOWN_FINISHES).map(
+                  (f) => (
+                    <option key={f} value={f}>
+                      {f}
+                    </option>
+                  ),
+                )}
+              </select>
+            </label>
+
+            <label className="grid min-w-0 gap-1">
+              <span className="font-mono text-xs uppercase tracking-widest text-fg-subtle">
+                Quantity
+              </span>
+              <input
+                type="number"
+                min={1}
+                value={quantity}
+                onChange={(e) => setQuantity(Number(e.target.value))}
+                className="w-full min-w-0 rounded border border-border bg-surface px-3 py-2 text-sm text-fg focus:border-border-strong focus:outline-none focus:ring-2 focus:ring-accent"
+              />
+            </label>
+
+            <label className="grid min-w-0 gap-1">
+              <span className="font-mono text-xs uppercase tracking-widest text-fg-subtle">
+                Condition
+              </span>
+              <select
+                value={condition}
+                onChange={(e) => {
+                  const v = e.target.value;
+                  if (isCardCondition(v)) setCondition(v);
+                }}
+                className="w-full min-w-0 rounded border border-border bg-surface px-3 py-2 text-sm text-fg focus:border-border-strong focus:outline-none focus:ring-2 focus:ring-accent"
+              >
+                {CONDITIONS.map((c) => (
+                  <option key={c} value={c}>
+                    {c}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
+
+          {/* More details disclosure */}
+          <details
+            open={moreOpen}
+            onToggle={(e) => setMoreOpen(e.currentTarget.open)}
+            className="rounded border border-border bg-surface px-3 py-2"
+          >
+            <summary className="cursor-pointer select-none font-mono text-xs uppercase tracking-widest text-fg-subtle">
+              More details
+            </summary>
+            <div className="mt-3 grid gap-x-4 gap-y-3 sm:grid-cols-2">
+              <label className="grid min-w-0 gap-1">
+                <span className="font-mono text-xs uppercase tracking-widest text-fg-subtle">
+                  Language
+                </span>
+                <input
+                  type="text"
+                  value={language}
+                  onChange={(e) => setLanguage(e.target.value)}
+                  maxLength={8}
+                  className="w-full min-w-0 rounded border border-border bg-surface px-3 py-2 text-sm text-fg focus:border-border-strong focus:outline-none focus:ring-2 focus:ring-accent"
+                />
+              </label>
+              <label className="grid min-w-0 gap-1">
+                <span className="font-mono text-xs uppercase tracking-widest text-fg-subtle">
+                  Acquired at
+                </span>
+                <input
+                  type="date"
+                  value={acquiredAt}
+                  onChange={(e) => setAcquiredAt(e.target.value)}
+                  className="w-full min-w-0 rounded border border-border bg-surface px-3 py-2 text-sm text-fg focus:border-border-strong focus:outline-none focus:ring-2 focus:ring-accent"
+                />
+              </label>
+              <label className="grid min-w-0 gap-1">
+                <span className="font-mono text-xs uppercase tracking-widest text-fg-subtle">
+                  Acquired from
+                </span>
+                <input
+                  type="text"
+                  value={acquiredFrom}
+                  onChange={(e) => setAcquiredFrom(e.target.value)}
+                  placeholder="LGS, prerelease, trade…"
+                  className="w-full min-w-0 rounded border border-border bg-surface px-3 py-2 text-sm text-fg placeholder:text-fg-subtle focus:border-border-strong focus:outline-none focus:ring-2 focus:ring-accent"
+                />
+              </label>
+              <label className="grid min-w-0 gap-1">
+                <span className="font-mono text-xs uppercase tracking-widest text-fg-subtle">
+                  Notes
+                </span>
+                <input
+                  type="text"
+                  value={notes}
+                  onChange={(e) => setNotes(e.target.value)}
+                  className="w-full min-w-0 rounded border border-border bg-surface px-3 py-2 text-sm text-fg focus:border-border-strong focus:outline-none focus:ring-2 focus:ring-accent"
+                />
+              </label>
+            </div>
+          </details>
+
+          {/* Errors + success flash live ABOVE the action bar so they're
+              read in the same block as the Confirm button (no floating
+              status text in the middle of the pane). */}
+          <div className="mt-auto flex flex-col gap-3">
+            {error && (
+              <p role="alert" className="font-mono text-xs text-signal-danger">
+                {error}
+              </p>
+            )}
+            {detailQuery.isError && (
+              <p role="alert" className="font-mono text-xs text-signal-danger">
+                Failed to load card detail: {detailQuery.error.message}
+              </p>
+            )}
+
+            {/* Action bar: bordered divider + flash message + Confirm. */}
+            <div className="flex items-center justify-between gap-3 border-t border-border pt-4">
+              <span
+                role="status"
+                aria-live="polite"
+                className="font-mono text-xs text-signal-success"
+              >
+                {flashing && !error ? "Added." : ""}
+              </span>
+              <button
+                type="submit"
+                disabled={
+                  isSubmitting ||
+                  !activePrinting ||
+                  detailQuery.isPending ||
+                  detailQuery.isError
+                }
+                className="rounded bg-accent px-5 py-2 font-mono text-xs uppercase tracking-widest text-accent-fg shadow-sm transition hover:bg-accent/90 focus:outline-none focus:ring-2 focus:ring-accent focus:ring-offset-2 focus:ring-offset-surface-raised disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {isSubmitting ? "Adding…" : "Confirm"}
+              </button>
+            </div>
+          </div>
         </div>
       </form>
     </PreviewShell>
@@ -539,10 +564,86 @@ function PreviewShell({ children }: { children: ReactNode }) {
   return (
     <aside
       aria-label="Card preview"
-      className="flex min-h-[520px] flex-col rounded-lg border border-border bg-surface-raised p-5 shadow"
+      className="flex min-h-[520px] flex-col rounded-lg border border-border bg-surface p-5 shadow-sm"
     >
       {children}
     </aside>
+  );
+}
+
+/**
+ * Branded fallback for printings without an image (tokens, some promos).
+ *
+ * Field Manual visual: cream paper card silhouette with a thin double border
+ * and a stamped wordmark in the centre, with set / collector # below.
+ * No WotC IP, no card-frame imitation. Sized to match the 120px thumbnail
+ * used by real card art, with the canonical 5:7 card aspect ratio.
+ */
+function CardBackPlaceholder({
+  isLoading,
+  setCode,
+  collectorNumber,
+  name,
+}: {
+  isLoading: boolean;
+  setCode?: string;
+  collectorNumber?: string;
+  name: string;
+}) {
+  return (
+    <div
+      role="img"
+      aria-label={
+        isLoading
+          ? `Loading image for ${name}`
+          : `No image available for ${name}`
+      }
+      className="flex aspect-[5/7] w-[120px] flex-col items-center justify-between rounded-lg border-2 border-double border-border-strong bg-surface p-2 text-center shadow-sm"
+    >
+      {/* Top corner stamp — small status label. */}
+      <span className="self-start font-mono text-[9px] uppercase tracking-widest text-fg-subtle">
+        {isLoading ? "\u2026" : "no art"}
+      </span>
+
+      {/* Centre: wordmark-style brand stamp. */}
+      <div className="flex flex-col items-center gap-1">
+        <CardSilhouetteIcon />
+        <span className="font-serif text-[10px] uppercase tracking-[0.2em] text-fg-muted">
+          Tutor
+        </span>
+      </div>
+
+      {/* Bottom: set + collector # caption — the user's anchor to identity. */}
+      <span className="font-mono text-[9px] uppercase tracking-widest text-fg-subtle">
+        {setCode && collectorNumber
+          ? `${setCode.toUpperCase()} \u00b7 #${collectorNumber}`
+          : "\u2014"}
+      </span>
+    </div>
+  );
+}
+
+function CardSilhouetteIcon() {
+  // Stylised card outline — a rounded rectangle with a small inset rectangle
+  // hinting at the art window. Stroked, not filled, so it reads as a stamp
+  // on the cream paper background. Inherits color from `text-fg-subtle`.
+  return (
+    <svg
+      width="28"
+      height="40"
+      viewBox="0 0 40 56"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.5"
+      aria-hidden="true"
+      className="text-fg-subtle"
+    >
+      <rect x="2" y="2" width="36" height="52" rx="3" />
+      <rect x="7" y="9" width="26" height="18" rx="1" />
+      <line x1="7" y1="34" x2="33" y2="34" />
+      <line x1="7" y1="40" x2="33" y2="40" />
+      <line x1="7" y1="46" x2="24" y2="46" />
+    </svg>
   );
 }
 

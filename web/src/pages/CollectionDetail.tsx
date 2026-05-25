@@ -395,16 +395,28 @@ function AddEntrySection({ id }: { id: string }) {
       aria-labelledby="add-entry-heading"
       className="rounded-lg border border-border bg-surface-raised p-6 shadow"
     >
-      <h2
-        id="add-entry-heading"
-        className="font-mono text-xs uppercase tracking-widest text-fg-subtle"
-      >
-        Add card
-      </h2>
+      {/* Header — clearer hierarchy: serif title + mono caption that
+          documents the input → preview → confirm flow. */}
+      <div className="flex flex-col gap-1 border-b border-border pb-4">
+        <h2
+          id="add-entry-heading"
+          className="font-serif text-2xl leading-tight text-fg"
+        >
+          Add card
+        </h2>
+        <p className="font-mono text-xs uppercase tracking-widest text-fg-subtle">
+          Search <span aria-hidden="true">·</span> Preview{" "}
+          <span aria-hidden="true">·</span> Confirm
+        </p>
+      </div>
 
-      <div className="mt-4 grid min-h-[560px] gap-6 md:grid-cols-2">
-        {/* Left pane: mode-aware picker + highlight emission. */}
-        <div className="flex flex-col gap-2">
+      {/* Equal-height two-pane layout. `items-stretch` ensures both children
+          inherit the same row height, fixing the lopsided rhythm where the
+          right pane was much taller than the left. */}
+      <div className="mt-5 grid min-h-[520px] gap-6 md:grid-cols-2 md:items-stretch">
+        {/* Left pane: mode-aware picker + highlight emission. Same surface
+            chrome as `CardPreview` so the two panes read as a matched pair. */}
+        <div className="flex min-h-0 flex-col gap-2 rounded-lg border border-border bg-surface p-5 shadow-sm">
           <AddCardLeftPane
             ref={leftPaneRef}
             onHighlight={setHighlight}
