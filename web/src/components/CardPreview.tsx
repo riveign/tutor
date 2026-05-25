@@ -82,6 +82,23 @@ function isCardCondition(value: string): value is CardCondition {
   return (CONDITIONS as readonly string[]).includes(value);
 }
 
+/**
+ * Native `<select>` doesn't ellipsis option text reliably across browsers,
+ * and the closed-state width is bounded by the column track. Long set names
+ * such as "Phyrexia: All Will Be One Promos" overflow the trigger, producing
+ * a clipped, ugly label. Truncate the set name to a width that comfortably
+ * fits the preview column at typical desktop layouts; the set code +
+ * collector # — the actual identity — always stays visible.
+ */
+const PRINTING_SET_NAME_MAX = 28;
+function formatPrintingOption(p: Printing): string {
+  const name =
+    p.set_name.length > PRINTING_SET_NAME_MAX
+      ? `${p.set_name.slice(0, PRINTING_SET_NAME_MAX - 1)}\u2026`
+      : p.set_name;
+  return `${p.set_code.toUpperCase()} \u00b7 #${p.collector_number} \u00b7 ${name}`;
+}
+
 // ---------------------------------------------------------------------------
 // Component
 // ---------------------------------------------------------------------------
@@ -674,18 +691,18 @@ function PrintingIdentity({
   }
 
   return (
-    <label className="grid gap-1">
+    <label className="grid min-w-0 gap-1">
       <span className="font-mono text-xs uppercase tracking-widest text-fg-subtle">
         Printing
       </span>
       <select
         value={active?.id ?? ""}
         onChange={(e) => onChange(e.currentTarget.value)}
-        className="rounded border border-border bg-surface px-3 py-2 text-sm text-fg focus:outline-none focus:ring-2 focus:ring-accent"
+        className="w-full min-w-0 rounded border border-border bg-surface px-3 py-2 text-sm text-fg focus:border-border-strong focus:outline-none focus:ring-2 focus:ring-accent"
       >
         {printings.map((p) => (
           <option key={p.id} value={p.id}>
-            {p.set_code.toUpperCase()} · #{p.collector_number} · {p.set_name}
+            {formatPrintingOption(p)}
           </option>
         ))}
       </select>
